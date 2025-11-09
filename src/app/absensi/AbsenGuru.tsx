@@ -105,7 +105,7 @@ export default function AbsenGuru() {
       unsubJadwal();
       unsubAbsensi();
     };
-  }, [firestore, user, toast, todayString, isDataReady, dayName]);
+  }, [firestore, user, toast, todayString, isDataReady]);
 
   const teachersMap = useMemo(() => new Map(teachers.map(t => [t.id, t.name])), [teachers]);
   const kurikulumMap = useMemo(() => new Map(kurikulum.map(k => [k.id, k])), [kurikulum]);
@@ -119,9 +119,8 @@ export default function AbsenGuru() {
     if (!firestore || !isAdmin) return;
     
     const existingAbsensi = absensiMap.get(jadwalItem.id);
-    const absensiRef = existingAbsensi 
-      ? doc(firestore, 'absensiGuru', existingAbsensi.id) 
-      : doc(collection(firestore, 'absensiGuru'));
+    const docId = existingAbsensi ? existingAbsensi.id : `${jadwalItem.id}_${todayString}`;
+    const absensiRef = doc(firestore, 'absensiGuru', docId);
 
     const absensiData: Omit<AbsensiGuru, 'id'> = {
       jadwalId: jadwalItem.id,

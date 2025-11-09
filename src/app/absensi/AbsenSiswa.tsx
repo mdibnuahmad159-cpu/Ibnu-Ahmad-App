@@ -119,7 +119,7 @@ export default function AbsenSiswa() {
       unsubJadwal();
       unsubSiswa();
     };
-  }, [firestore, user, dayName, selectedKelas, isDataReady, toast]);
+  }, [firestore, user, todayString, selectedKelas, isDataReady, toast]);
 
   // Fetch attendance data when jadwal changes
   useEffect(() => {
@@ -149,9 +149,8 @@ export default function AbsenSiswa() {
     if (!firestore || !isAdmin || !selectedJadwalId) return;
 
     const existingAbsensi = absensiSiswaMap.get(siswaId);
-    const absensiRef = existingAbsensi
-        ? doc(firestore, 'absensiSiswa', existingAbsensi.id)
-        : doc(collection(firestore, 'absensiSiswa'));
+    const docId = existingAbsensi ? existingAbsensi.id : `${selectedJadwalId}_${siswaId}_${todayString}`;
+    const absensiRef = doc(firestore, 'absensiSiswa', docId);
 
     const absensiData: Omit<AbsensiSiswa, 'id'> = {
         jadwalId: selectedJadwalId,
@@ -183,6 +182,7 @@ export default function AbsenSiswa() {
       return;
     }
     
+    // Efficiently query by batching student IDs (max 30 per 'in' query)
     const idBatches = [];
     for (let i = 0; i < studentIds.length; i += 30) {
         idBatches.push(studentIds.slice(i, i + 30));
