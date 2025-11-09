@@ -66,7 +66,7 @@ export default function AbsenGuru() {
     };
 
     fetchStaticData();
-  }, [firestore, user]);
+  }, [firestore, user, toast]);
 
   const jadwalQuery = useMemoFirebase(() => {
       if (!firestore || !user) return null;
@@ -242,3 +242,5 @@ export default function AbsenGuru() {
     </Card>
   );
 }
+
+    

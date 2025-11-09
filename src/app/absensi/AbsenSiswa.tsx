@@ -71,7 +71,7 @@ export default function AbsenSiswa() {
           }
       };
       fetchData();
-  }, [firestore, user]);
+  }, [firestore, user, toast]);
 
   const jadwalQuery = useMemoFirebase(() => {
       if (!firestore || !user) return null;
@@ -153,9 +153,9 @@ export default function AbsenSiswa() {
         const studentIds = students.map(s => s.id);
         const monthlyAbsensi: AbsensiSiswa[] = [];
         
-        // Firestore 'in' query has a limit of 30 items.
-        // We chunk the studentIds array to handle more than 30 students.
-        const CHUNK_SIZE = 30;
+        const CHUNK_SIZE = 30; // Firestore 'in' query limit
+        const promises = [];
+
         for (let i = 0; i < studentIds.length; i += CHUNK_SIZE) {
             const chunk = studentIds.slice(i, i + CHUNK_SIZE);
             const absensiReportQuery = query(
@@ -164,9 +164,13 @@ export default function AbsenSiswa() {
                 where('tanggal', '<=', lastDay),
                 where('siswaId', 'in', chunk)
             );
-            const absensiSnap = await getDocs(absensiReportQuery);
-            absensiSnap.docs.forEach(d => monthlyAbsensi.push(d.data() as AbsensiSiswa));
+            promises.push(getDocs(absensiReportQuery));
         }
+
+        const snapshots = await Promise.all(promises);
+        snapshots.forEach(snapshot => {
+            snapshot.docs.forEach(d => monthlyAbsensi.push(d.data() as AbsensiSiswa));
+        });
 
         const recap: { [key: string]: { nama: string, nis: string, Hadir: number, Izin: number, Sakit: number, Alpha: number } } = {};
         
@@ -202,7 +206,7 @@ export default function AbsenSiswa() {
         toast({ title: "Laporan Berhasil Dibuat!", description: "File PDF telah diunduh." });
     } catch (error) {
         console.error("Failed to export PDF:", error);
-        toast({ variant: 'destructive', title: "Gagal Membuat Laporan", description: "Terjadi kesalahan." });
+        toast({ variant: 'destructive', title: "Gagal Membuat Laporan", description: "Terjadi kesalahan saat mengambil data laporan." });
     }
   };
 
