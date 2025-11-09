@@ -1,6 +1,7 @@
+
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Table,
   TableBody,
@@ -19,7 +20,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AbsensiSiswa, Guru, Jadwal, Kurikulum, Siswa } from '@/lib/data';
-import { useFirestore, useUser } from '@/firebase';
+import { useFirestore, useUser, setDocumentNonBlocking } from '@/firebase';
 import { collection, query, where, onSnapshot, doc, getDocs, setDoc, Unsubscribe } from 'firebase/firestore';
 import { useAdmin } from '@/context/AdminProvider';
 import { useToast } from '@/hooks/use-toast';
@@ -43,7 +44,6 @@ export default function AbsenSiswa() {
   const { isAdmin } = useAdmin();
   const { toast } = useToast();
 
-  // Data
   const [jadwal, setJadwal] = useState<Jadwal[]>([]);
   const [students, setStudents] = useState<Siswa[]>([]);
   const [kurikulum, setKurikulum] = useState<Kurikulum[]>([]);
@@ -52,7 +52,6 @@ export default function AbsenSiswa() {
   const [isLoading, setIsLoading] = useState(false);
   const [isDataReady, setIsDataReady] = useState(false);
 
-  // Filters
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedKelas, setSelectedKelas] = useState('1');
   const [selectedJadwalId, setSelectedJadwalId] = useState<string | null>(null);
@@ -61,7 +60,6 @@ export default function AbsenSiswa() {
   const todayString = useMemo(() => format(selectedDate, 'yyyy-MM-dd'), [selectedDate]);
   const dayName = useMemo(() => HARI_MAP[getDay(selectedDate)], [selectedDate]);
 
-  // Combined useEffect for all data fetching
   useEffect(() => {
     if (!firestore || !user) return;
     
@@ -75,7 +73,6 @@ export default function AbsenSiswa() {
 
     const fetchData = async () => {
       try {
-        // 1. Fetch static data first
         const kurikulumQuery = collection(firestore, 'kurikulum');
         const guruQuery = collection(firestore, 'gurus');
         const [kurikulumSnap, guruSnap] = await Promise.all([getDocs(kurikulumQuery), getDocs(guruQuery)]);
@@ -83,7 +80,6 @@ export default function AbsenSiswa() {
         setTeachers(guruSnap.docs.map(d => ({ id: d.id, ...d.data() } as Guru)));
         setIsDataReady(true);
         
-        // 2. Set up listeners for dynamic data
         const jadwalQuery = query(
           collection(firestore, 'jadwal'),
           where('hari', '==', dayName),
@@ -101,10 +97,9 @@ export default function AbsenSiswa() {
         );
         unsubSiswa = onSnapshot(siswaQuery, snap => {
           setStudents(snap.docs.map(d => ({ id: d.id, ...d.data() } as Siswa)));
-          setIsLoading(false); // Stop loading after students are fetched
+          setIsLoading(false);
         });
         
-        // Listener for absensi will depend on selectedJadwalId, handled in another effect
       } catch (error) {
           console.error("Failed to fetch prerequisite data for AbsenSiswa", error);
           toast({ variant: 'destructive', title: "Gagal memuat data pendukung."});
@@ -120,9 +115,8 @@ export default function AbsenSiswa() {
       if (unsubAbsensi) unsubAbsensi();
     };
 
-  }, [firestore, user, todayString, dayName, selectedKelas, toast]);
+  }, [firestore, user, todayString, selectedKelas, toast]);
 
-  // Separate effect for absensi listener, dependent on selectedJadwalId
   useEffect(() => {
     if (!firestore || !selectedJadwalId) {
         setAbsensiSiswa([]);
@@ -149,7 +143,7 @@ export default function AbsenSiswa() {
 
   const sortedStudents = useMemo(() => [...students].sort((a,b) => a.nama.localeCompare(b.nama)), [students]);
   
-  const handleStatusChange = async (siswaId: string, status: AbsensiSiswa['status']) => {
+  const handleStatusChange = (siswaId: string, status: AbsensiSiswa['status']) => {
     if (!firestore || !isAdmin || !selectedJadwalId) return;
 
     const existingAbsensi = absensiSiswaMap.get(siswaId);
@@ -165,13 +159,8 @@ export default function AbsenSiswa() {
         keterangan: ''
     };
 
-    try {
-        await setDoc(absensiRef, absensiData, { merge: true });
-        toast({ title: 'Absensi diperbarui' });
-    } catch (error) {
-        console.error("Error updating student attendance:", error);
-        toast({ variant: 'destructive', title: 'Gagal memperbarui absensi.'});
-    }
+    setDocumentNonBlocking(absensiRef, absensiData, { merge: true });
+    toast({ title: 'Absensi diperbarui' });
   };
 
   const handleExportSiswaPdf = async () => {
@@ -189,7 +178,6 @@ export default function AbsenSiswa() {
       return;
     }
     
-    // Batching queries for 'in' operator limit
     const idBatches = [];
     for (let i = 0; i < studentIds.length; i += 30) {
         idBatches.push(studentIds.slice(i, i + 30));
@@ -355,3 +343,5 @@ export default function AbsenSiswa() {
     </Card>
   );
 }
+
+    

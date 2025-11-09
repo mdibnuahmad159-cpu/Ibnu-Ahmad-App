@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useMemo, useEffect, useCallback } from 'react';
@@ -11,7 +12,7 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Jadwal, Guru, Kurikulum, AbsensiGuru } from '@/lib/data';
-import { useFirestore, useUser } from '@/firebase';
+import { useFirestore, useUser, setDocumentNonBlocking } from '@/firebase';
 import { collection, query, where, onSnapshot, doc, getDocs, setDoc, Unsubscribe } from 'firebase/firestore';
 import { useAdmin } from '@/context/AdminProvider';
 import { useToast } from '@/hooks/use-toast';
@@ -58,7 +59,6 @@ export default function AbsenGuru() {
 
     const fetchData = async () => {
       try {
-        // 1. Fetch static data first
         const guruQuery = collection(firestore, 'gurus');
         const kurikulumQuery = collection(firestore, 'kurikulum');
         
@@ -74,14 +74,13 @@ export default function AbsenGuru() {
         setKurikulum(fetchedKurikulum);
         setIsDataReady(true);
 
-        // 2. Now that static data is ready, set up listeners
         const jadwalQuery = query(collection(firestore, 'jadwal'), where('hari', '==', dayName));
         unsubJadwal = onSnapshot(jadwalQuery, snap => setJadwal(snap.docs.map(d => ({ id: d.id, ...d.data() } as Jadwal))));
         
         const absensiQuery = query(collection(firestore, 'absensiGuru'), where('tanggal', '==', todayString));
         unsubAbsensi = onSnapshot(absensiQuery, snap => {
           setAbsensi(snap.docs.map(d => ({ id: d.id, ...d.data() } as AbsensiGuru)));
-          setIsLoading(false); // Only stop loading after dynamic data is also fetched
+          setIsLoading(false);
         }, (error) => {
             console.error("Error fetching absensi:", error);
             setIsLoading(false);
@@ -112,7 +111,7 @@ export default function AbsenGuru() {
     [...jadwal].sort((a,b) => a.jam.localeCompare(b.jam) || a.kelas.localeCompare(b.kelas))
   , [jadwal]);
 
-  const handleStatusChange = async (jadwalItem: Jadwal, status: AbsensiGuru['status']) => {
+  const handleStatusChange = (jadwalItem: Jadwal, status: AbsensiGuru['status']) => {
     if (!firestore || !isAdmin) return;
     
     const existingAbsensi = absensiMap.get(jadwalItem.id);
@@ -128,13 +127,8 @@ export default function AbsenGuru() {
       keterangan: '',
     };
     
-    try {
-        await setDoc(absensiRef, absensiData, { merge: true });
-        toast({ title: 'Absensi diperbarui', description: `Status guru ${teachersMap.get(jadwalItem.guruId)} diubah menjadi ${status}.`});
-    } catch (error) {
-        console.error("Error updating attendance:", error);
-        toast({ variant: 'destructive', title: 'Gagal memperbarui absensi.'});
-    }
+    setDocumentNonBlocking(absensiRef, absensiData, { merge: true });
+    toast({ title: 'Absensi diperbarui', description: `Status guru ${teachersMap.get(jadwalItem.guruId)} diubah menjadi ${status}.`});
   };
 
   const handleExportGuruPdf = async () => {
@@ -302,3 +296,5 @@ export default function AbsenGuru() {
     </Card>
   );
 }
+
+    
