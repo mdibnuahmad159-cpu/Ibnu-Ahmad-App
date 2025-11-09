@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -13,7 +13,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Jadwal, Guru, Kurikulum, AbsensiGuru } from '@/lib/data';
 import { useFirestore, useUser, setDocumentNonBlocking } from '@/firebase';
-import { collection, query, where, onSnapshot, doc, getDocs, setDoc, Unsubscribe } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, getDocs, Unsubscribe } from 'firebase/firestore';
 import { useAdmin } from '@/context/AdminProvider';
 import { useToast } from '@/hooks/use-toast';
 import { format, getDay, startOfMonth, endOfMonth } from 'date-fns';
@@ -48,16 +48,11 @@ export default function AbsenGuru() {
   const todayString = useMemo(() => format(selectedDate, 'yyyy-MM-dd'), [selectedDate]);
   const dayName = useMemo(() => HARI_MAP[getDay(selectedDate)], [selectedDate]);
 
+  // Fetch static data (teachers, curriculum) once
   useEffect(() => {
     if (!firestore || !user) return;
     
-    setIsLoading(true);
-    setIsDataReady(false);
-    
-    let unsubJadwal: Unsubscribe | undefined;
-    let unsubAbsensi: Unsubscribe | undefined;
-
-    const fetchData = async () => {
+    const fetchStaticData = async () => {
       try {
         const guruQuery = collection(firestore, 'gurus');
         const kurikulumQuery = collection(firestore, 'kurikulum');
@@ -74,34 +69,42 @@ export default function AbsenGuru() {
         setKurikulum(fetchedKurikulum);
         setIsDataReady(true);
 
-        const jadwalQuery = query(collection(firestore, 'jadwal'), where('hari', '==', dayName));
-        unsubJadwal = onSnapshot(jadwalQuery, snap => setJadwal(snap.docs.map(d => ({ id: d.id, ...d.data() } as Jadwal))));
-        
-        const absensiQuery = query(collection(firestore, 'absensiGuru'), where('tanggal', '==', todayString));
-        unsubAbsensi = onSnapshot(absensiQuery, snap => {
-          setAbsensi(snap.docs.map(d => ({ id: d.id, ...d.data() } as AbsensiGuru)));
-          setIsLoading(false);
-        }, (error) => {
-            console.error("Error fetching absensi:", error);
-            setIsLoading(false);
-            toast({ variant: 'destructive', title: 'Gagal memuat absensi.' });
-        });
-
       } catch (error) {
         console.error("Failed to fetch static data", error);
         toast({ variant: 'destructive', title: "Gagal memuat data pendukung."});
-        setIsLoading(false);
+        setIsDataReady(false); // Mark as not ready on error
       }
     };
 
-    fetchData();
+    fetchStaticData();
+  }, [firestore, user, toast]);
+
+  // Fetch dynamic data (schedule, attendance) and update on date change
+  useEffect(() => {
+    if (!firestore || !user || !isDataReady) return; // Wait for static data
+
+    setIsLoading(true);
+
+    const jadwalQuery = query(collection(firestore, 'jadwal'), where('hari', '==', dayName));
+    const unsubJadwal = onSnapshot(jadwalQuery, snap => {
+        setJadwal(snap.docs.map(d => ({ id: d.id, ...d.data() } as Jadwal)));
+    });
+    
+    const absensiQuery = query(collection(firestore, 'absensiGuru'), where('tanggal', '==', todayString));
+    const unsubAbsensi = onSnapshot(absensiQuery, snap => {
+      setAbsensi(snap.docs.map(d => ({ id: d.id, ...d.data() } as AbsensiGuru)));
+      setIsLoading(false);
+    }, (error) => {
+        console.error("Error fetching absensi:", error);
+        toast({ variant: 'destructive', title: 'Gagal memuat absensi.' });
+        setIsLoading(false);
+    });
 
     return () => {
-      if (unsubJadwal) unsubJadwal();
-      if (unsubAbsensi) unsubAbsensi();
+      unsubJadwal();
+      unsubAbsensi();
     };
-  }, [firestore, user, toast, todayString, dayName]);
-
+  }, [firestore, user, toast, todayString, dayName, isDataReady]);
 
   const teachersMap = useMemo(() => new Map(teachers.map(t => [t.id, t.name])), [teachers]);
   const kurikulumMap = useMemo(() => new Map(kurikulum.map(k => [k.id, k])), [kurikulum]);
@@ -296,5 +299,3 @@ export default function AbsenGuru() {
     </Card>
   );
 }
-
-    
