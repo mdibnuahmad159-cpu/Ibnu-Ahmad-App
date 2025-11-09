@@ -71,7 +71,7 @@ export default function AbsenSiswa() {
           }
       };
       fetchData();
-  }, [firestore, user]);
+  }, [firestore, user, toast]);
 
   const jadwalQuery = useMemoFirebase(() => {
       if (!firestore || !user) return null;
@@ -101,7 +101,7 @@ export default function AbsenSiswa() {
       where('jadwalId', '==', selectedJadwalId)
     );
   }, [firestore, todayString, selectedJadwalId]);
-  const { data: absensiSiswa, isLoading: isAbsensiLoading } = useCollection<AbsensiSiswa>(absensiSiswaQuery);
+  const { data: absensiSiswa, isLoading: isAbsensiLoading } = useCollection<AbsensiSiswa>(absensiQuery);
 
   useEffect(() => {
     setSelectedJadwalId(null);
@@ -150,19 +150,24 @@ export default function AbsenSiswa() {
         const firstDay = format(startOfMonth(monthDate), 'yyyy-MM-dd');
         const lastDay = format(endOfMonth(monthDate), 'yyyy-MM-dd');
         
-        const studentIds = students.map(s => s.id);
+        const jadwalKelasQuery = query(collection(firestore, 'jadwal'), where('kelas', '==', selectedKelas));
+        const jadwalSnap = await getDocs(jadwalKelasQuery);
+        const jadwalIds = jadwalSnap.docs.map(d => d.id);
         
-        // This is a more robust way to query without hitting index limits or 'in' array limits for large classes.
-        // It might be slightly slower for very large datasets but is more reliable.
+        if (jadwalIds.length === 0) {
+          toast({ title: "Tidak Ada Jadwal", description: `Tidak ada jadwal pelajaran untuk Kelas ${selectedKelas}.` });
+          return;
+        }
+
         const absensiReportQuery = query(
             collection(firestore, 'absensiSiswa'),
             where('tanggal', '>=', firstDay),
-            where('tanggal', '<=', lastDay)
+            where('tanggal', '<=', lastDay),
+            where('jadwalId', 'in', jadwalIds)
         );
         const absensiSnap = await getDocs(absensiReportQuery);
 
-        // Filter in client-side after getting all records for the month.
-        const studentIdSet = new Set(studentIds);
+        const studentIdSet = new Set(students.map(s => s.id));
         const monthlyAbsensi = absensiSnap.docs
             .map(d => d.data() as AbsensiSiswa)
             .filter(absen => studentIdSet.has(absen.siswaId));
