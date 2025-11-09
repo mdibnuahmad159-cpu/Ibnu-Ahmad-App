@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
@@ -21,7 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AbsensiSiswa, Guru, Jadwal, Kurikulum, Siswa } from '@/lib/data';
 import { useFirestore, useUser, setDocumentNonBlocking } from '@/firebase';
-import { collection, query, where, onSnapshot, doc, getDocs, Unsubscribe } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, getDocs } from 'firebase/firestore';
 import { useAdmin } from '@/context/AdminProvider';
 import { useToast } from '@/hooks/use-toast';
 import { format, getDay, startOfMonth, endOfMonth } from 'date-fns';
@@ -64,6 +63,7 @@ export default function AbsenSiswa() {
   useEffect(() => {
       if (!firestore || !user) return;
 
+      setIsDataReady(false);
       const fetchData = async () => {
           try {
               const kurikulumQuery = collection(firestore, 'kurikulum');
@@ -75,7 +75,6 @@ export default function AbsenSiswa() {
           } catch (error) {
               console.error("Failed to fetch prerequisite data for AbsenSiswa", error);
               toast({ variant: 'destructive', title: "Gagal memuat data pendukung." });
-              setIsDataReady(false);
           }
       };
 
@@ -89,8 +88,7 @@ export default function AbsenSiswa() {
     setIsLoading(true);
     setSelectedJadwalId(null);
     setJadwal([]);
-    setStudents([]);
-
+    
     const jadwalQuery = query(
       collection(firestore, 'jadwal'),
       where('hari', '==', dayName),
@@ -99,6 +97,9 @@ export default function AbsenSiswa() {
     const unsubJadwal = onSnapshot(jadwalQuery, snap => {
         const jadwalData = snap.docs.map(d => ({ id: d.id, ...d.data() } as Jadwal));
         setJadwal(jadwalData);
+    }, (error) => {
+        console.error("Error fetching jadwal:", error);
+        toast({ variant: 'destructive', title: 'Gagal memuat jadwal.' });
     });
     
     const siswaQuery = query(

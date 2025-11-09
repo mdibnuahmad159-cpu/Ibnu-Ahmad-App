@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
@@ -13,7 +12,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Jadwal, Guru, Kurikulum, AbsensiGuru } from '@/lib/data';
 import { useFirestore, useUser, setDocumentNonBlocking } from '@/firebase';
-import { collection, query, where, onSnapshot, doc, getDocs, Unsubscribe } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, getDocs } from 'firebase/firestore';
 import { useAdmin } from '@/context/AdminProvider';
 import { useToast } from '@/hooks/use-toast';
 import { format, getDay, startOfMonth, endOfMonth } from 'date-fns';
@@ -52,6 +51,7 @@ export default function AbsenGuru() {
   useEffect(() => {
     if (!firestore || !user) return;
     
+    setIsDataReady(false);
     const fetchStaticData = async () => {
       try {
         const guruQuery = collection(firestore, 'gurus');
@@ -72,7 +72,6 @@ export default function AbsenGuru() {
       } catch (error) {
         console.error("Failed to fetch static data", error);
         toast({ variant: 'destructive', title: "Gagal memuat data pendukung."});
-        setIsDataReady(false); // Mark as not ready on error
       }
     };
 
@@ -81,13 +80,16 @@ export default function AbsenGuru() {
 
   // Fetch dynamic data (schedule, attendance) and update on date change
   useEffect(() => {
-    if (!firestore || !user || !isDataReady) return; // Wait for static data
+    if (!firestore || !user || !isDataReady) return; 
 
     setIsLoading(true);
 
     const jadwalQuery = query(collection(firestore, 'jadwal'), where('hari', '==', dayName));
     const unsubJadwal = onSnapshot(jadwalQuery, snap => {
         setJadwal(snap.docs.map(d => ({ id: d.id, ...d.data() } as Jadwal)));
+    }, (error) => {
+        console.error("Error fetching jadwal:", error);
+        toast({ variant: 'destructive', title: 'Gagal memuat jadwal.' });
     });
     
     const absensiQuery = query(collection(firestore, 'absensiGuru'), where('tanggal', '==', todayString));
@@ -104,7 +106,7 @@ export default function AbsenGuru() {
       unsubJadwal();
       unsubAbsensi();
     };
-  }, [firestore, user, toast, todayString, dayName, isDataReady]);
+  }, [firestore, user, toast, todayString, isDataReady, dayName]);
 
   const teachersMap = useMemo(() => new Map(teachers.map(t => [t.id, t.name])), [teachers]);
   const kurikulumMap = useMemo(() => new Map(kurikulum.map(k => [k.id, k])), [kurikulum]);
