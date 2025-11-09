@@ -1,7 +1,6 @@
-
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -40,6 +39,7 @@ export default function AbsenGuru() {
   const [kurikulum, setKurikulum] = useState<Kurikulum[]>([]);
   const [absensi, setAbsensi] = useState<AbsensiGuru[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDataReady, setIsDataReady] = useState(false);
 
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
@@ -47,49 +47,62 @@ export default function AbsenGuru() {
   const todayString = useMemo(() => format(selectedDate, 'yyyy-MM-dd'), [selectedDate]);
   const dayName = useMemo(() => HARI_MAP[getDay(selectedDate)], [selectedDate]);
 
-  // Fetch static data once, and listen to dynamic data
   useEffect(() => {
     if (!firestore || !user) return;
+    
+    setIsLoading(true);
+    setIsDataReady(false);
+    
+    let unsubJadwal: Unsubscribe | undefined;
+    let unsubAbsensi: Unsubscribe | undefined;
 
-    const fetchStaticData = async () => {
-        try {
-            const guruQuery = collection(firestore, 'gurus');
-            const kurikulumQuery = collection(firestore, 'kurikulum');
-            
-            const [guruSnap, kurikulumSnap] = await Promise.all([
-                getDocs(guruQuery),
-                getDocs(kurikulumQuery),
-            ]);
+    const fetchData = async () => {
+      try {
+        // 1. Fetch static data first
+        const guruQuery = collection(firestore, 'gurus');
+        const kurikulumQuery = collection(firestore, 'kurikulum');
+        
+        const [guruSnap, kurikulumSnap] = await Promise.all([
+            getDocs(guruQuery),
+            getDocs(kurikulumQuery),
+        ]);
 
-            setTeachers(guruSnap.docs.map(d => ({ id: d.id, ...d.data() } as Guru)));
-            setKurikulum(kurikulumSnap.docs.map(d => ({ id: d.id, ...d.data() } as Kurikulum)));
-        } catch (error) {
-            console.error("Failed to fetch static data", error);
-            toast({ variant: 'destructive', title: "Gagal memuat data pendukung."});
-        }
+        const fetchedTeachers = guruSnap.docs.map(d => ({ id: d.id, ...d.data() } as Guru));
+        const fetchedKurikulum = kurikulumSnap.docs.map(d => ({ id: d.id, ...d.data() } as Kurikulum));
+        
+        setTeachers(fetchedTeachers);
+        setKurikulum(fetchedKurikulum);
+        setIsDataReady(true);
+
+        // 2. Now that static data is ready, set up listeners
+        const jadwalQuery = query(collection(firestore, 'jadwal'), where('hari', '==', dayName));
+        unsubJadwal = onSnapshot(jadwalQuery, snap => setJadwal(snap.docs.map(d => ({ id: d.id, ...d.data() } as Jadwal))));
+        
+        const absensiQuery = query(collection(firestore, 'absensiGuru'), where('tanggal', '==', todayString));
+        unsubAbsensi = onSnapshot(absensiQuery, snap => {
+          setAbsensi(snap.docs.map(d => ({ id: d.id, ...d.data() } as AbsensiGuru)));
+          setIsLoading(false); // Only stop loading after dynamic data is also fetched
+        }, (error) => {
+            console.error("Error fetching absensi:", error);
+            setIsLoading(false);
+            toast({ variant: 'destructive', title: 'Gagal memuat absensi.' });
+        });
+
+      } catch (error) {
+        console.error("Failed to fetch static data", error);
+        toast({ variant: 'destructive', title: "Gagal memuat data pendukung."});
+        setIsLoading(false);
+      }
     };
 
-    fetchStaticData();
-  }, [firestore, user, toast]);
-
-  useEffect(() => {
-    if (!firestore || !user) return;
-    setIsLoading(true);
-
-    const jadwalQuery = query(collection(firestore, 'jadwal'), where('hari', '==', dayName));
-    const absensiQuery = query(collection(firestore, 'absensiGuru'), where('tanggal', '==', todayString));
-
-    const unsubJadwal = onSnapshot(jadwalQuery, snap => setJadwal(snap.docs.map(d => ({ id: d.id, ...d.data() } as Jadwal))));
-    const unsubAbsensi = onSnapshot(absensiQuery, snap => {
-      setAbsensi(snap.docs.map(d => ({ id: d.id, ...d.data() } as AbsensiGuru)))
-      setIsLoading(false);
-    });
+    fetchData();
 
     return () => {
-      unsubJadwal();
-      unsubAbsensi();
+      if (unsubJadwal) unsubJadwal();
+      if (unsubAbsensi) unsubAbsensi();
     };
-  }, [firestore, user, todayString, dayName]);
+  }, [firestore, user, toast, todayString, dayName]);
+
 
   const teachersMap = useMemo(() => new Map(teachers.map(t => [t.id, t.name])), [teachers]);
   const kurikulumMap = useMemo(() => new Map(kurikulum.map(k => [k.id, k])), [kurikulum]);
@@ -115,8 +128,13 @@ export default function AbsenGuru() {
       keterangan: '',
     };
     
-    setDoc(absensiRef, absensiData, { merge: true });
-    toast({ title: 'Absensi diperbarui', description: `Status guru ${teachersMap.get(jadwalItem.guruId)} diubah menjadi ${status}.`});
+    try {
+        await setDoc(absensiRef, absensiData, { merge: true });
+        toast({ title: 'Absensi diperbarui', description: `Status guru ${teachersMap.get(jadwalItem.guruId)} diubah menjadi ${status}.`});
+    } catch (error) {
+        console.error("Error updating attendance:", error);
+        toast({ variant: 'destructive', title: 'Gagal memperbarui absensi.'});
+    }
   };
 
   const handleExportGuruPdf = async () => {
@@ -210,8 +228,6 @@ export default function AbsenGuru() {
     doc.save(`laporan_absen_guru_${selectedMonth}.pdf`);
   };
 
-  const isDataReady = teachers.length > 0 && kurikulum.length > 0;
-
   return (
     <Card>
       <CardHeader>
@@ -247,7 +263,7 @@ export default function AbsenGuru() {
       </CardHeader>
       <CardContent>
         {isLoading && <p>Memuat jadwal...</p>}
-        {!isLoading && !isDataReady && <p>Memuat data guru dan kurikulum...</p>}
+        {!isLoading && !isDataReady && <p>Gagal memuat data pendukung. Coba refresh halaman.</p>}
         {!isLoading && isDataReady && jadwalSorted.length === 0 && <p>Tidak ada jadwal mengajar untuk hari ini.</p>}
         <div className="space-y-4">
           {isDataReady && jadwalSorted.map((item) => {
@@ -286,5 +302,3 @@ export default function AbsenGuru() {
     </Card>
   );
 }
-
-    
