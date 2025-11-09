@@ -1,4 +1,3 @@
-
 {
   "entities": {
     "Guru": {
@@ -203,10 +202,9 @@
         "siswaId": { "type": "string" },
         "tanggal": { "type": "string", "format": "date" },
         "status": { "type": "string", "enum": ["Hadir", "Izin", "Sakit", "Alpha"] },
-        "keterangan": { "type": "string" },
-        "kelas": { "type": "number", "description": "The class level for this attendance record." }
+        "keterangan": { "type": "string" }
       },
-      "required": ["jadwalId", "siswaId", "tanggal", "status", "kelas"]
+      "required": ["jadwalId", "siswaId", "tanggal", "status"]
     }
   },
   "auth": {
@@ -251,5 +249,3 @@
     }
   }
 }
-
-    

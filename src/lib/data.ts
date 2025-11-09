@@ -1,4 +1,3 @@
-
 // This file is no longer the primary source of truth.
 // Data is now fetched from and managed in Firebase Firestore.
 // The types are kept for reference and type safety in components.
@@ -93,7 +92,4 @@ export type AbsensiSiswa = {
   tanggal: string; // YYYY-MM-DD
   status: 'Hadir' | 'Izin' | 'Sakit' | 'Alpha';
   keterangan?: string;
-  kelas: number;
 }
-
-    
