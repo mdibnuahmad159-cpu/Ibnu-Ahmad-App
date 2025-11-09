@@ -71,7 +71,7 @@ export default function AbsenSiswa() {
           }
       };
       fetchData();
-  }, [firestore, user, toast]);
+  }, [firestore, user]);
 
   const jadwalQuery = useMemoFirebase(() => {
       if (!firestore || !user) return null;
@@ -101,7 +101,7 @@ export default function AbsenSiswa() {
       where('jadwalId', '==', selectedJadwalId)
     );
   }, [firestore, todayString, selectedJadwalId]);
-  const { data: absensiSiswa, isLoading: isAbsensiLoading } = useCollection<AbsensiSiswa>(absensiQuery);
+  const { data: absensiSiswa, isLoading: isAbsensiLoading } = useCollection<AbsensiSiswa>(absensiSiswaQuery);
 
   useEffect(() => {
     setSelectedJadwalId(null);
@@ -151,27 +151,22 @@ export default function AbsenSiswa() {
         const lastDay = format(endOfMonth(monthDate), 'yyyy-MM-dd');
         
         const studentIds = students.map(s => s.id);
-        const monthlyAbsensi: AbsensiSiswa[] = [];
         
-        const CHUNK_SIZE = 30; // Firestore 'in' query limit
-        const promises = [];
+        // This is a more robust way to query without hitting index limits or 'in' array limits for large classes.
+        // It might be slightly slower for very large datasets but is more reliable.
+        const absensiReportQuery = query(
+            collection(firestore, 'absensiSiswa'),
+            where('tanggal', '>=', firstDay),
+            where('tanggal', '<=', lastDay)
+        );
+        const absensiSnap = await getDocs(absensiReportQuery);
 
-        for (let i = 0; i < studentIds.length; i += CHUNK_SIZE) {
-            const chunk = studentIds.slice(i, i + CHUNK_SIZE);
-            const absensiReportQuery = query(
-                collection(firestore, 'absensiSiswa'),
-                where('tanggal', '>=', firstDay),
-                where('tanggal', '<=', lastDay),
-                where('siswaId', 'in', chunk)
-            );
-            promises.push(getDocs(absensiReportQuery));
-        }
-
-        const snapshots = await Promise.all(promises);
-        snapshots.forEach(snapshot => {
-            snapshot.docs.forEach(d => monthlyAbsensi.push(d.data() as AbsensiSiswa));
-        });
-
+        // Filter in client-side after getting all records for the month.
+        const studentIdSet = new Set(studentIds);
+        const monthlyAbsensi = absensiSnap.docs
+            .map(d => d.data() as AbsensiSiswa)
+            .filter(absen => studentIdSet.has(absen.siswaId));
+        
         const recap: { [key: string]: { nama: string, nis: string, Hadir: number, Izin: number, Sakit: number, Alpha: number } } = {};
         
         students.forEach(student => {
@@ -315,5 +310,3 @@ export default function AbsenSiswa() {
     </Card>
   );
 }
-
-    
