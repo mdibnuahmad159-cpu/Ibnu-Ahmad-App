@@ -13,7 +13,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Jadwal, Guru, Kurikulum, AbsensiGuru } from '@/lib/data';
 import { useFirestore, useUser, setDocumentNonBlocking } from '@/firebase';
-import { collection, query, where, onSnapshot, doc, getDocs } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, getDocs, setDoc } from 'firebase/firestore';
 import { useAdmin } from '@/context/AdminProvider';
 import { useToast } from '@/hooks/use-toast';
 import { format, getDay, startOfMonth, endOfMonth } from 'date-fns';
@@ -96,12 +96,8 @@ export default function AbsenGuru() {
       keterangan: '',
     };
     
-    try {
-      await setDocumentNonBlocking(absensiRef, absensiData, { merge: true });
-      toast({ title: 'Absensi diperbarui', description: `Status guru ${teachersMap.get(jadwalItem.guruId)} diubah menjadi ${status}.`});
-    } catch (error) {
-      toast({ variant: 'destructive', title: 'Gagal menyimpan absensi' });
-    }
+    setDoc(absensiRef, absensiData, { merge: true });
+    toast({ title: 'Absensi diperbarui', description: `Status guru ${teachersMap.get(jadwalItem.guruId)} diubah menjadi ${status}.`});
   };
 
   const handleExportGuruPdf = async () => {
@@ -268,4 +264,3 @@ export default function AbsenGuru() {
     </Card>
   );
 }
-

@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AbsensiSiswa, Guru, Jadwal, Kurikulum, Siswa } from '@/lib/data';
 import { useFirestore, useUser, setDocumentNonBlocking } from '@/firebase';
-import { collection, query, where, onSnapshot, doc, getDocs } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, getDocs, setDoc } from 'firebase/firestore';
 import { useAdmin } from '@/context/AdminProvider';
 import { useToast } from '@/hooks/use-toast';
 import { format, getDay, startOfMonth, endOfMonth } from 'date-fns';
@@ -143,11 +143,8 @@ export default function AbsenSiswa() {
         keterangan: ''
     };
 
-    try {
-        await setDocumentNonBlocking(absensiRef, absensiData, { merge: true });
-    } catch (e) {
-        toast({ variant: 'destructive', title: 'Gagal', description: 'Gagal menyimpan absensi siswa.'});
-    }
+    setDoc(absensiRef, absensiData, { merge: true });
+    toast({ title: 'Absensi diperbarui' });
   };
 
   const handleExportSiswaPdf = async () => {
@@ -318,4 +315,3 @@ export default function AbsenSiswa() {
     </Card>
   );
 }
-
