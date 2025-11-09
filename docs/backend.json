@@ -203,9 +203,10 @@
         "siswaId": { "type": "string" },
         "tanggal": { "type": "string", "format": "date" },
         "status": { "type": "string", "enum": ["Hadir", "Izin", "Sakit", "Alpha"] },
-        "keterangan": { "type": "string" }
+        "keterangan": { "type": "string" },
+        "kelas": { "type": "number", "description": "The class level for this attendance record." }
       },
-      "required": ["jadwalId", "siswaId", "tanggal", "status"]
+      "required": ["jadwalId", "siswaId", "tanggal", "status", "kelas"]
     }
   },
   "auth": {

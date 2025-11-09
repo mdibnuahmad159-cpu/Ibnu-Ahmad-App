@@ -71,7 +71,7 @@ export default function AbsenSiswa() {
           }
       };
       fetchData();
-  }, [firestore, user, toast]);
+  }, [firestore, user]);
 
   const jadwalQuery = useMemoFirebase(() => {
       if (!firestore || !user) return null;
@@ -127,7 +127,8 @@ export default function AbsenSiswa() {
         siswaId: siswaId,
         tanggal: todayString,
         status: status,
-        keterangan: ''
+        keterangan: '',
+        kelas: Number(selectedKelas), // Add class number for efficient querying
     };
 
     setDocumentNonBlocking(absensiRef, absensiData, { merge: true });
@@ -149,28 +150,16 @@ export default function AbsenSiswa() {
         const monthDate = new Date(reportMonth + '-02');
         const firstDay = format(startOfMonth(monthDate), 'yyyy-MM-dd');
         const lastDay = format(endOfMonth(monthDate), 'yyyy-MM-dd');
-        
-        const jadwalKelasQuery = query(collection(firestore, 'jadwal'), where('kelas', '==', selectedKelas));
-        const jadwalSnap = await getDocs(jadwalKelasQuery);
-        const jadwalIds = jadwalSnap.docs.map(d => d.id);
-        
-        if (jadwalIds.length === 0) {
-          toast({ title: "Tidak Ada Jadwal", description: `Tidak ada jadwal pelajaran untuk Kelas ${selectedKelas}.` });
-          return;
-        }
 
         const absensiReportQuery = query(
             collection(firestore, 'absensiSiswa'),
             where('tanggal', '>=', firstDay),
             where('tanggal', '<=', lastDay),
-            where('jadwalId', 'in', jadwalIds)
+            where('kelas', '==', Number(selectedKelas))
         );
-        const absensiSnap = await getDocs(absensiReportQuery);
 
-        const studentIdSet = new Set(students.map(s => s.id));
-        const monthlyAbsensi = absensiSnap.docs
-            .map(d => d.data() as AbsensiSiswa)
-            .filter(absen => studentIdSet.has(absen.siswaId));
+        const absensiSnap = await getDocs(absensiReportQuery);
+        const monthlyAbsensi = absensiSnap.docs.map(d => d.data() as AbsensiSiswa);
         
         const recap: { [key: string]: { nama: string, nis: string, Hadir: number, Izin: number, Sakit: number, Alpha: number } } = {};
         
@@ -198,7 +187,7 @@ export default function AbsenSiswa() {
                 data.Izin,
                 data.Sakit,
                 data.Alpha,
-            ]),
+            ]).sort((a,b) => String(a[1]).localeCompare(String(b[1]))), // Sort by name
             startY: 20,
         });
 
@@ -206,7 +195,7 @@ export default function AbsenSiswa() {
         toast({ title: "Laporan Berhasil Dibuat!", description: "File PDF telah diunduh." });
     } catch (error) {
         console.error("Failed to export PDF:", error);
-        toast({ variant: 'destructive', title: "Gagal Membuat Laporan", description: "Terjadi kesalahan saat mengambil data laporan." });
+        toast({ variant: 'destructive', title: "Gagal Membuat Laporan", description: "Terjadi kesalahan saat mengambil data laporan. Coba lagi atau hubungi admin." });
     }
   };
 
@@ -315,3 +304,5 @@ export default function AbsenSiswa() {
     </Card>
   );
 }
+
+    

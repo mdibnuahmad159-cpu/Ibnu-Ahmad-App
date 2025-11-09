@@ -93,6 +93,7 @@ export type AbsensiSiswa = {
   tanggal: string; // YYYY-MM-DD
   status: 'Hadir' | 'Izin' | 'Sakit' | 'Alpha';
   keterangan?: string;
+  kelas: number;
 }
 
     
