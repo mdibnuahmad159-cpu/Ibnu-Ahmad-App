@@ -151,15 +151,22 @@ export default function AbsenSiswa() {
         const lastDay = format(endOfMonth(monthDate), 'yyyy-MM-dd');
         
         const studentIds = students.map(s => s.id);
-        const absensiReportQuery = query(
-            collection(firestore, 'absensiSiswa'),
-            where('tanggal', '>=', firstDay),
-            where('tanggal', '<=', lastDay),
-            where('siswaId', 'in', studentIds)
-        );
-
-        const absensiSnap = await getDocs(absensiReportQuery);
-        const monthlyAbsensi = absensiSnap.docs.map(d => d.data() as AbsensiSiswa);
+        const monthlyAbsensi: AbsensiSiswa[] = [];
+        
+        // Firestore 'in' query has a limit of 30 items.
+        // We chunk the studentIds array to handle more than 30 students.
+        const CHUNK_SIZE = 30;
+        for (let i = 0; i < studentIds.length; i += CHUNK_SIZE) {
+            const chunk = studentIds.slice(i, i + CHUNK_SIZE);
+            const absensiReportQuery = query(
+                collection(firestore, 'absensiSiswa'),
+                where('tanggal', '>=', firstDay),
+                where('tanggal', '<=', lastDay),
+                where('siswaId', 'in', chunk)
+            );
+            const absensiSnap = await getDocs(absensiReportQuery);
+            absensiSnap.docs.forEach(d => monthlyAbsensi.push(d.data() as AbsensiSiswa));
+        }
 
         const recap: { [key: string]: { nama: string, nis: string, Hadir: number, Izin: number, Sakit: number, Alpha: number } } = {};
         
@@ -304,3 +311,5 @@ export default function AbsenSiswa() {
     </Card>
   );
 }
+
+    

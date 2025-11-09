@@ -94,3 +94,5 @@ export type AbsensiSiswa = {
   status: 'Hadir' | 'Izin' | 'Sakit' | 'Alpha';
   keterangan?: string;
 }
+
+    
