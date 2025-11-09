@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
@@ -11,14 +12,15 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Jadwal, Guru, Kurikulum, AbsensiGuru } from '@/lib/data';
-import { useFirestore, useUser, setDocumentNonBlocking } from '@/firebase';
-import { collection, query, where, onSnapshot, doc, getDocs } from 'firebase/firestore';
+import { useFirestore, useUser, setDocumentNonBlocking, useMemoFirebase } from '@/firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { useAdmin } from '@/context/AdminProvider';
 import { useToast } from '@/hooks/use-toast';
 import { format, getDay, startOfMonth, endOfMonth } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { FileDown } from 'lucide-react';
 import type jsPDF from 'jspdf';
+import { useCollection } from '@/firebase/firestore/use-collection';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -33,11 +35,9 @@ export default function AbsenGuru() {
   const { isAdmin } = useAdmin();
   const { toast } = useToast();
 
-  const [jadwal, setJadwal] = useState<Jadwal[]>([]);
   const [teachers, setTeachers] = useState<Guru[]>([]);
   const [kurikulum, setKurikulum] = useState<Kurikulum[]>([]);
-  const [absensi, setAbsensi] = useState<AbsensiGuru[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isStaticDataLoading, setIsStaticDataLoading] = useState(true);
 
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
@@ -45,11 +45,11 @@ export default function AbsenGuru() {
   const todayString = useMemo(() => format(selectedDate, 'yyyy-MM-dd'), [selectedDate]);
   const dayName = useMemo(() => HARI_MAP[getDay(selectedDate)], [selectedDate]);
 
-  // Fetch static data (teachers, curriculum) once
   useEffect(() => {
     if (!firestore || !user) return;
     
     const fetchStaticData = async () => {
+      setIsStaticDataLoading(true);
       try {
         const guruQuery = collection(firestore, 'gurus');
         const kurikulumQuery = collection(firestore, 'kurikulum');
@@ -65,49 +65,35 @@ export default function AbsenGuru() {
       } catch (error) {
         console.error("Failed to fetch static data for AbsenGuru", error);
         toast({ variant: 'destructive', title: "Gagal memuat data pendukung."});
+      } finally {
+        setIsStaticDataLoading(false);
       }
     };
 
     fetchStaticData();
   }, [firestore, user]);
 
-  // Fetch dynamic data (schedule, attendance) and update on date change
-  useEffect(() => {
-    if (!firestore || !user) return; 
+  const jadwalQuery = useMemoFirebase(() => {
+      if (!firestore || !user) return null;
+      return query(collection(firestore, 'jadwal'), where('hari', '==', dayName));
+  }, [firestore, user, dayName]);
+  const { data: jadwal, isLoading: isJadwalLoading } = useCollection<Jadwal>(jadwalQuery);
 
-    setIsLoading(true);
-
-    const jadwalQuery = query(collection(firestore, 'jadwal'), where('hari', '==', dayName));
-    const unsubJadwal = onSnapshot(jadwalQuery, snap => {
-        setJadwal(snap.docs.map(d => ({ id: d.id, ...d.data() } as Jadwal)));
-    }, (error) => {
-        console.error("Error fetching jadwal:", error);
-        toast({ variant: 'destructive', title: 'Gagal memuat jadwal.' });
-    });
-    
-    const absensiQuery = query(collection(firestore, 'absensiGuru'), where('tanggal', '==', todayString));
-    const unsubAbsensi = onSnapshot(absensiQuery, snap => {
-      setAbsensi(snap.docs.map(d => ({ id: d.id, ...d.data() } as AbsensiGuru)));
-      setIsLoading(false);
-    }, (error) => {
-        console.error("Error fetching absensi:", error);
-        toast({ variant: 'destructive', title: 'Gagal memuat absensi.' });
-        setIsLoading(false);
-    });
-
-    return () => {
-      unsubJadwal();
-      unsubAbsensi();
-    };
-  }, [firestore, user, todayString, dayName]);
-
+  const absensiQuery = useMemoFirebase(() => {
+      if (!firestore || !user) return null;
+      return query(collection(firestore, 'absensiGuru'), where('tanggal', '==', todayString));
+  }, [firestore, user, todayString]);
+  const { data: absensi, isLoading: isAbsensiLoading } = useCollection<AbsensiGuru>(absensiQuery);
+  
   const teachersMap = useMemo(() => new Map(teachers.map(t => [t.id, t.name])), [teachers]);
   const kurikulumMap = useMemo(() => new Map(kurikulum.map(k => [k.id, k])), [kurikulum]);
-  const absensiMap = useMemo(() => new Map(absensi.map(a => [a.jadwalId, a])), [absensi]);
+  const absensiMap = useMemo(() => new Map((absensi || []).map(a => [a.jadwalId, a])), [absensi]);
 
   const jadwalSorted = useMemo(() => 
-    [...jadwal].sort((a,b) => a.jam.localeCompare(b.jam) || a.kelas.localeCompare(b.kelas))
+    [...(jadwal || [])].sort((a,b) => a.jam.localeCompare(b.jam) || a.kelas.localeCompare(b.kelas))
   , [jadwal]);
+
+  const isLoading = isStaticDataLoading || isJadwalLoading || isAbsensiLoading;
 
   const handleStatusChange = (jadwalItem: Jadwal, status: AbsensiGuru['status']) => {
     if (!firestore || !isAdmin) return;

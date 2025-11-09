@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
@@ -19,14 +20,16 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AbsensiSiswa, Guru, Jadwal, Kurikulum, Siswa } from '@/lib/data';
-import { useFirestore, useUser, setDocumentNonBlocking } from '@/firebase';
-import { collection, query, where, onSnapshot, doc, getDocs } from 'firebase/firestore';
+import { useFirestore, useUser, setDocumentNonBlocking, useMemoFirebase } from '@/firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { useAdmin } from '@/context/AdminProvider';
 import { useToast } from '@/hooks/use-toast';
 import { format, getDay, startOfMonth, endOfMonth } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { FileDown } from 'lucide-react';
 import type jsPDF from 'jspdf';
+import { useCollection } from '@/firebase/firestore/use-collection';
+import { doc } from 'firebase/firestore';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -41,13 +44,10 @@ export default function AbsenSiswa() {
   const { user } = useUser();
   const { isAdmin } = useAdmin();
   const { toast } = useToast();
-
-  const [jadwal, setJadwal] = useState<Jadwal[]>([]);
-  const [students, setStudents] = useState<Siswa[]>([]);
+  
   const [kurikulum, setKurikulum] = useState<Kurikulum[]>([]);
   const [teachers, setTeachers] = useState<Guru[]>([]);
-  const [absensiSiswa, setAbsensiSiswa] = useState<AbsensiSiswa[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isStaticDataLoading, setIsStaticDataLoading] = useState(true);
 
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedKelas, setSelectedKelas] = useState('1');
@@ -57,10 +57,11 @@ export default function AbsenSiswa() {
   const todayString = useMemo(() => format(selectedDate, 'yyyy-MM-dd'), [selectedDate]);
   const dayName = useMemo(() => HARI_MAP[getDay(selectedDate)], [selectedDate]);
 
-  // Fetch static data (kurikulum, teachers) once
   useEffect(() => {
       if (!firestore || !user) return;
+      
       const fetchData = async () => {
+          setIsStaticDataLoading(true);
           try {
               const kurikulumQuery = collection(firestore, 'kurikulum');
               const guruQuery = collection(firestore, 'gurus');
@@ -70,76 +71,55 @@ export default function AbsenSiswa() {
           } catch (error) {
               console.error("Failed to fetch prerequisite data for AbsenSiswa", error);
               toast({ variant: 'destructive', title: "Gagal memuat data pendukung." });
+          } finally {
+              setIsStaticDataLoading(false);
           }
       };
       fetchData();
   }, [firestore, user]);
 
-  // Fetch dynamic data (jadwal, students) when date or class changes
-  useEffect(() => {
-    if (!firestore || !user ) return;
+  const jadwalQuery = useMemoFirebase(() => {
+      if (!firestore || !user) return null;
+      return query(
+          collection(firestore, 'jadwal'),
+          where('hari', '==', dayName),
+          where('kelas', '==', selectedKelas)
+      );
+  }, [firestore, user, dayName, selectedKelas]);
+  const { data: jadwal, isLoading: isJadwalLoading } = useCollection<Jadwal>(jadwalQuery);
 
-    setIsLoading(true);
-    setSelectedJadwalId(null);
-    setJadwal([]);
-    
-    const jadwalQuery = query(
-      collection(firestore, 'jadwal'),
-      where('hari', '==', dayName),
-      where('kelas', '==', selectedKelas)
-    );
-    const unsubJadwal = onSnapshot(jadwalQuery, snap => {
-        const jadwalData = snap.docs.map(d => ({ id: d.id, ...d.data() } as Jadwal));
-        setJadwal(jadwalData);
-    }, (error) => {
-        console.error("Error fetching jadwal:", error);
-        toast({ variant: 'destructive', title: 'Gagal memuat jadwal.' });
-    });
-    
-    const siswaQuery = query(
+  const siswaQuery = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return query(
       collection(firestore, 'siswa'),
       where('status', '==', 'Aktif'),
       where('kelas', '==', Number(selectedKelas))
     );
-    const unsubSiswa = onSnapshot(siswaQuery, snap => {
-      setStudents(snap.docs.map(d => ({ id: d.id, ...d.data() } as Siswa)));
-      setIsLoading(false);
-    }, (error) => {
-        console.error("Error fetching students:", error);
-        toast({ variant: 'destructive', title: 'Gagal memuat data siswa.' });
-        setIsLoading(false);
-    });
+  }, [firestore, user, selectedKelas]);
+  const { data: students, isLoading: isSiswaLoading } = useCollection<Siswa>(siswaQuery);
 
-    return () => {
-      unsubJadwal();
-      unsubSiswa();
-    };
-  }, [firestore, user, dayName, selectedKelas]);
-
-  // Fetch attendance data when jadwal changes
-  useEffect(() => {
-    if (!firestore || !selectedJadwalId) {
-        setAbsensiSiswa([]);
-        return;
-    };
-    
-    const absensiQuery = query(
+  const absensiQuery = useMemoFirebase(() => {
+    if (!firestore || !selectedJadwalId) return null;
+    return query(
       collection(firestore, 'absensiSiswa'), 
       where('tanggal', '==', todayString),
       where('jadwalId', '==', selectedJadwalId)
     );
-    
-    const unsubAbsensi = onSnapshot(absensiQuery, snap => setAbsensiSiswa(snap.docs.map(d => ({ id: d.id, ...d.data() } as AbsensiSiswa))));
-
-    return () => unsubAbsensi();
   }, [firestore, todayString, selectedJadwalId]);
-  
+  const { data: absensiSiswa, isLoading: isAbsensiLoading } = useCollection<AbsensiSiswa>(absensiQuery);
+
+  useEffect(() => {
+    setSelectedJadwalId(null);
+  }, [dayName, selectedKelas]);
+
   const kurikulumMap = useMemo(() => new Map(kurikulum.map(k => [k.id, k.mataPelajaran])), [kurikulum]);
   const teachersMap = useMemo(() => new Map(teachers.map(t => [t.id, t.name])), [teachers]);
-  const absensiSiswaMap = useMemo(() => new Map(absensiSiswa.map(a => [a.siswaId, a])), [absensiSiswa]);
+  const absensiSiswaMap = useMemo(() => new Map((absensiSiswa || []).map(a => [a.siswaId, a])), [absensiSiswa]);
 
-  const sortedStudents = useMemo(() => [...students].sort((a,b) => a.nama.localeCompare(b.nama)), [students]);
+  const sortedStudents = useMemo(() => [...(students || [])].sort((a,b) => a.nama.localeCompare(b.nama)), [students]);
   
+  const isLoading = isStaticDataLoading || isJadwalLoading || isSiswaLoading || (selectedJadwalId && isAbsensiLoading);
+
   const handleStatusChange = (siswaId: string, status: AbsensiSiswa['status']) => {
     if (!firestore || !isAdmin || !selectedJadwalId) return;
 
@@ -160,7 +140,10 @@ export default function AbsenSiswa() {
   };
 
   const handleExportSiswaPdf = async () => {
-    if (!firestore || !students.length) return;
+    if (!firestore || !students || students.length === 0) {
+      toast({ variant: 'destructive', title: "Tidak ada siswa", description: "Tidak ada siswa di kelas ini untuk diekspor." });
+      return;
+    }
 
     toast({ title: "Membuat Laporan...", description: "Harap tunggu sebentar." });
 
@@ -171,11 +154,6 @@ export default function AbsenSiswa() {
     const firstDay = format(startOfMonth(monthDate), 'yyyy-MM-dd');
     const lastDay = format(endOfMonth(monthDate), 'yyyy-MM-dd');
     const studentIds = students.map(s => s.id);
-
-    if(studentIds.length === 0) {
-      toast({ variant: 'destructive', title: "Tidak ada siswa", description: "Tidak ada siswa di kelas ini untuk diekspor." });
-      return;
-    }
     
     // Efficiently query by batching student IDs (max 30 per 'in' query)
     const idBatches = [];
@@ -264,11 +242,11 @@ export default function AbsenSiswa() {
             <div className="lg:col-span-2">
                 <label className="text-sm font-medium">Jadwal Pelajaran</label>
                  <Select value={selectedJadwalId || ''} onValueChange={setSelectedJadwalId}>
-                    <SelectTrigger className="w-full mt-1" disabled={jadwal.length === 0}>
-                        <SelectValue placeholder={jadwal.length > 0 ? "Pilih Jadwal" : "Tidak ada jadwal hari ini"} />
+                    <SelectTrigger className="w-full mt-1" disabled={!jadwal || jadwal.length === 0}>
+                        <SelectValue placeholder={jadwal && jadwal.length > 0 ? "Pilih Jadwal" : "Tidak ada jadwal hari ini"} />
                     </SelectTrigger>
                     <SelectContent>
-                        {jadwal.map(j => (
+                        {(jadwal || []).map(j => (
                             <SelectItem key={j.id} value={j.id}>
                                 {j.jam} - {kurikulumMap.get(j.kurikulumId)} ({teachersMap.get(j.guruId)})
                             </SelectItem>
