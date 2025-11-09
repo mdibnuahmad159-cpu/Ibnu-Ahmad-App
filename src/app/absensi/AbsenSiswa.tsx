@@ -17,23 +17,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AbsensiSiswa, Guru, Jadwal, Kurikulum, Siswa } from '@/lib/data';
 import { useFirestore, useUser, setDocumentNonBlocking, useMemoFirebase } from '@/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { useAdmin } from '@/context/AdminProvider';
 import { useToast } from '@/hooks/use-toast';
-import { format, getDay, startOfMonth, endOfMonth } from 'date-fns';
+import { format, getDay } from 'date-fns';
 import { id } from 'date-fns/locale';
-import { FileDown } from 'lucide-react';
-import type jsPDF from 'jspdf';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { doc } from 'firebase/firestore';
-
-interface jsPDFWithAutoTable extends jsPDF {
-  autoTable: (options: any) => jsPDF;
-}
 
 const HARI_MAP = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 const KELAS_OPTIONS = ['0', '1', '2', '3', '4', '5', '6'];
@@ -52,7 +45,6 @@ export default function AbsenSiswa() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedKelas, setSelectedKelas] = useState('1');
   const [selectedJadwalId, setSelectedJadwalId] = useState<string | null>(null);
-  const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
 
   const todayString = useMemo(() => format(selectedDate, 'yyyy-MM-dd'), [selectedDate]);
   const dayName = useMemo(() => HARI_MAP[getDay(selectedDate)], [selectedDate]);
@@ -76,7 +68,7 @@ export default function AbsenSiswa() {
           }
       };
       fetchData();
-  }, [firestore, user]);
+  }, [firestore, user, toast]);
 
   const jadwalQuery = useMemoFirebase(() => {
       if (!firestore || !user) return null;
@@ -139,81 +131,6 @@ export default function AbsenSiswa() {
     toast({ title: 'Absensi diperbarui' });
   };
 
-  const handleExportSiswaPdf = async () => {
-    if (!firestore || !students || students.length === 0) {
-      toast({ variant: 'destructive', title: "Tidak ada siswa", description: "Tidak ada siswa di kelas ini untuk diekspor." });
-      return;
-    }
-
-    toast({ title: "Membuat Laporan...", description: "Harap tunggu sebentar." });
-
-    const { default: jsPDF } = await import('jspdf');
-    await import('jspdf-autotable');
-
-    const monthDate = new Date(selectedMonth + "-01T12:00:00");
-    const firstDay = format(startOfMonth(monthDate), 'yyyy-MM-dd');
-    const lastDay = format(endOfMonth(monthDate), 'yyyy-MM-dd');
-    const studentIds = students.map(s => s.id);
-    
-    // Efficiently query by batching student IDs (max 30 per 'in' query)
-    const idBatches = [];
-    for (let i = 0; i < studentIds.length; i += 30) {
-        idBatches.push(studentIds.slice(i, i + 30));
-    }
-    
-    const absensiPromises = idBatches.map(batch => {
-        const absensiQuery = query(collection(firestore, 'absensiSiswa'), 
-            where('siswaId', 'in', batch),
-            where('tanggal', '>=', firstDay), 
-            where('tanggal', '<=', lastDay)
-        );
-        return getDocs(absensiQuery);
-    });
-
-    const absensiSnapshots = await Promise.all(absensiPromises);
-    const monthlyAbsensi = absensiSnapshots.flatMap(snap => snap.docs.map(d => d.data() as AbsensiSiswa));
-    
-    const attendanceByStudent: { [key: string]: { summary: { [key: string]: number }, total: number } } = {};
-
-    students.forEach(student => {
-      attendanceByStudent[student.id] = {
-        summary: { 'Hadir': 0, 'Izin': 0, 'Sakit': 0, 'Alpha': 0 },
-        total: 0
-      };
-    });
-    
-    monthlyAbsensi.forEach(absen => {
-      if (attendanceByStudent[absen.siswaId]) {
-        attendanceByStudent[absen.siswaId].summary[absen.status]++;
-        attendanceByStudent[absen.siswaId].total++;
-      }
-    });
-
-    const doc = new jsPDF() as jsPDFWithAutoTable;
-    doc.text(`Laporan Absensi Siswa Kelas ${selectedKelas} - ${format(monthDate, 'MMMM yyyy', { locale: id })}`, 14, 15);
-    
-    const summaryBody = sortedStudents.map(student => {
-        const studentData = attendanceByStudent[student.id] || { summary: { 'Hadir': 0, 'Izin': 0, 'Sakit': 0, 'Alpha': 0 } };
-        return [
-            student.nama,
-            student.nis,
-            studentData.summary.Hadir,
-            studentData.summary.Izin,
-            studentData.summary.Sakit,
-            studentData.summary.Alpha,
-        ];
-    });
-
-    doc.autoTable({
-        head: [['Nama Siswa', 'NIS', 'Hadir', 'Izin', 'Sakit', 'Alpha']],
-        body: summaryBody,
-        startY: 20
-    });
-    
-    doc.save(`laporan_absen_kelas_${selectedKelas}_${selectedMonth}.pdf`);
-  };
-
-
   return (
     <Card>
       <CardHeader>
@@ -254,21 +171,6 @@ export default function AbsenSiswa() {
                     </SelectContent>
                 </Select>
             </div>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto justify-end mt-4">
-            <div className='flex items-center gap-2'>
-                <label htmlFor="month-picker-siswa" className="text-sm font-medium">Laporan Bulan:</label>
-                <input 
-                    type="month" 
-                    id="month-picker-siswa"
-                    value={selectedMonth}
-                    onChange={(e) => setSelectedMonth(e.target.value)}
-                    className="border rounded-md p-2"
-                />
-            </div>
-            <Button onClick={handleExportSiswaPdf} variant="outline" size="sm" disabled={!students || students.length === 0}>
-                <FileDown className="mr-2 h-4 w-4" /> Ekspor PDF
-            </Button>
         </div>
       </CardHeader>
       <CardContent>

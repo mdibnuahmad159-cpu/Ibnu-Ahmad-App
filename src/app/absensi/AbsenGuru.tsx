@@ -13,18 +13,12 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Jadwal, Guru, Kurikulum, AbsensiGuru } from '@/lib/data';
 import { useFirestore, useUser, setDocumentNonBlocking, useMemoFirebase } from '@/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc } from 'firebase/firestore';
 import { useAdmin } from '@/context/AdminProvider';
 import { useToast } from '@/hooks/use-toast';
-import { format, getDay, startOfMonth, endOfMonth } from 'date-fns';
+import { format, getDay } from 'date-fns';
 import { id } from 'date-fns/locale';
-import { FileDown } from 'lucide-react';
-import type jsPDF from 'jspdf';
 import { useCollection } from '@/firebase/firestore/use-collection';
-
-interface jsPDFWithAutoTable extends jsPDF {
-  autoTable: (options: any) => jsPDF;
-}
 
 const HARI_MAP = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 const STATUS_OPTIONS: AbsensiGuru['status'][] = ['Hadir', 'Izin', 'Sakit', 'Alpha'];
@@ -40,7 +34,6 @@ export default function AbsenGuru() {
   const [isStaticDataLoading, setIsStaticDataLoading] = useState(true);
 
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
 
   const todayString = useMemo(() => format(selectedDate, 'yyyy-MM-dd'), [selectedDate]);
   const dayName = useMemo(() => HARI_MAP[getDay(selectedDate)], [selectedDate]);
@@ -71,7 +64,7 @@ export default function AbsenGuru() {
     };
 
     fetchStaticData();
-  }, [firestore, user]);
+  }, [firestore, user, toast]);
 
   const jadwalQuery = useMemoFirebase(() => {
       if (!firestore || !user) return null;
@@ -114,104 +107,6 @@ export default function AbsenGuru() {
     toast({ title: 'Absensi diperbarui', description: `Status guru ${teachersMap.get(jadwalItem.guruId)} diubah menjadi ${status}.`});
   };
 
-  const handleExportGuruPdf = async () => {
-    if (!firestore || teachers.length === 0 || kurikulum.length === 0) {
-      toast({ variant: 'destructive', title: "Data belum siap", description: "Tunggu data guru dan kurikulum termuat sepenuhnya."});
-      return;
-    };
-
-    toast({ title: "Membuat Laporan...", description: "Harap tunggu sebentar." });
-    
-    const { default: jsPDF } = await import('jspdf');
-    await import('jspdf-autotable');
-
-    const monthDate = new Date(selectedMonth + "-01T12:00:00");
-    const firstDay = format(startOfMonth(monthDate), 'yyyy-MM-dd');
-    const lastDay = format(endOfMonth(monthDate), 'yyyy-MM-dd');
-
-    const absensiQuery = query(collection(firestore, 'absensiGuru'), 
-        where('tanggal', '>=', firstDay), 
-        where('tanggal', '<=', lastDay)
-    );
-
-    const [absensiSnap, jadwalSnap] = await Promise.all([
-      getDocs(absensiQuery),
-      getDocs(collection(firestore, 'jadwal'))
-    ]);
-    
-    const monthlyAbsensi = absensiSnap.docs.map(d => d.data() as AbsensiGuru);
-    const jadwalMap = new Map(jadwalSnap.docs.map(d => [d.id, d.data() as Jadwal]));
-
-    const attendanceByTeacher: { [key: string]: { summary: { [key: string]: number }, details: any[] } } = {};
-
-    teachers.forEach(teacher => {
-      attendanceByTeacher[teacher.id] = {
-        summary: { 'Hadir': 0, 'Izin': 0, 'Sakit': 0, 'Alpha': 0, 'Total': 0 },
-        details: []
-      };
-    });
-    
-    monthlyAbsensi.forEach(absen => {
-      if (attendanceByTeacher[absen.guruId]) {
-        attendanceByTeacher[absen.guruId].summary[absen.status]++;
-        attendanceByTeacher[absen.guruId].summary['Total']++;
-        
-        const jadwalItem = jadwalMap.get(absen.jadwalId);
-        const kurikulumItem = jadwalItem ? kurikulumMap.get(jadwalItem.kurikulumId) : null;
-
-        attendanceByTeacher[absen.guruId].details.push({
-            tanggal: absen.tanggal,
-            jam: jadwalItem?.jam || '-',
-            mapel: kurikulumItem?.mataPelajaran || '-',
-            kelas: `Kelas ${jadwalItem?.kelas || '-'}`,
-            status: absen.status
-        });
-      }
-    });
-
-    const doc = new jsPDF() as jsPDFWithAutoTable;
-    doc.text(`Laporan Absensi Guru - ${format(monthDate, 'MMMM yyyy', { locale: id })}`, 14, 15);
-
-    const summaryBody = Object.keys(attendanceByTeacher).map(guruId => {
-        const teacherData = attendanceByTeacher[guruId];
-        const teacherName = teachersMap.get(guruId) || 'Nama Tidak Ditemukan';
-        return [
-            teacherName,
-            teacherData.summary.Hadir,
-            teacherData.summary.Izin,
-            teacherData.summary.Sakit,
-            teacherData.summary.Alpha,
-            teacherData.summary.Total,
-        ];
-    });
-
-    doc.autoTable({
-        head: [['Nama Guru', 'Hadir', 'Izin', 'Sakit', 'Alpha', 'Total Pertemuan']],
-        body: summaryBody,
-        startY: 20,
-        didDrawPage: (data) => { if(data.cursor) data.cursor.y = 20; }
-    });
-
-    Object.keys(attendanceByTeacher).forEach(guruId => {
-      const teacherData = attendanceByTeacher[guruId];
-      if (teacherData.details.length > 0) {
-        doc.addPage();
-        const teacherName = teachersMap.get(guruId) || 'Nama Tidak Ditemukan';
-        doc.text(`Detail Kehadiran: ${teacherName}`, 14, 15);
-        
-        const detailBody = teacherData.details.sort((a,b) => a.tanggal.localeCompare(b.tanggal)).map(d => [d.tanggal, d.jam, d.mapel, d.kelas, d.status]);
-
-        doc.autoTable({
-          head: [['Tanggal', 'Jam', 'Mata Pelajaran', 'Kelas', 'Status']],
-          body: detailBody,
-          startY: 20
-        });
-      }
-    });
-    
-    doc.save(`laporan_absen_guru_${selectedMonth}.pdf`);
-  };
-
   return (
     <Card>
       <CardHeader>
@@ -226,21 +121,6 @@ export default function AbsenGuru() {
                     onChange={(e) => setSelectedDate(new Date(e.target.value))}
                     className="border rounded-md p-2"
                 />
-            </div>
-             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                <div className='flex items-center gap-2'>
-                    <label htmlFor="month-picker" className="text-sm font-medium">Laporan Bulan:</label>
-                    <input 
-                        type="month" 
-                        id="month-picker"
-                        value={selectedMonth}
-                        onChange={(e) => setSelectedMonth(e.target.value)}
-                        className="border rounded-md p-2"
-                    />
-                </div>
-                <Button onClick={handleExportGuruPdf} variant="outline" size="sm" disabled={teachers.length === 0}>
-                    <FileDown className="mr-2 h-4 w-4" /> Ekspor PDF
-                </Button>
             </div>
         </div>
         <p className="text-sm text-muted-foreground mt-2">Jadwal untuk: {format(selectedDate, 'eeee, dd MMMM yyyy', { locale: id })}</p>
