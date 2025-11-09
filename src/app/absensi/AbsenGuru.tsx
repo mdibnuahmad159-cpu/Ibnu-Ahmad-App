@@ -18,8 +18,7 @@ import { useToast } from '@/hooks/use-toast';
 import { format, getDay, startOfMonth, endOfMonth } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { FileDown } from 'lucide-react';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import type jsPDF from 'jspdf';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -139,6 +138,9 @@ export default function AbsenGuru() {
   const handleExportGuruPdf = async () => {
     if (!firestore) return;
     toast({ title: "Membuat Laporan...", description: "Harap tunggu sebentar." });
+    
+    const { default: jsPDF } = await import('jspdf');
+    await import('jspdf-autotable');
 
     const monthDate = new Date(selectedMonth + "-01T12:00:00");
     const firstDay = format(startOfMonth(monthDate), 'yyyy-MM-dd');
