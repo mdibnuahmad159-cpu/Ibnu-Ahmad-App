@@ -23,10 +23,12 @@ import { useFirestore, useUser, setDocumentNonBlocking, useMemoFirebase } from '
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { useAdmin } from '@/context/AdminProvider';
 import { useToast } from '@/hooks/use-toast';
-import { format, getDay } from 'date-fns';
+import { format, getDay, startOfMonth, endOfMonth } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { doc } from 'firebase/firestore';
+import { Button } from '@/components/ui/button';
+import { FileDown } from 'lucide-react';
 
 const HARI_MAP = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 const KELAS_OPTIONS = ['0', '1', '2', '3', '4', '5', '6'];
@@ -45,6 +47,7 @@ export default function AbsenSiswa() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedKelas, setSelectedKelas] = useState('1');
   const [selectedJadwalId, setSelectedJadwalId] = useState<string | null>(null);
+  const [reportMonth, setReportMonth] = useState(format(new Date(), 'yyyy-MM'));
 
   const todayString = useMemo(() => format(selectedDate, 'yyyy-MM-dd'), [selectedDate]);
   const dayName = useMemo(() => HARI_MAP[getDay(selectedDate)], [selectedDate]);
@@ -68,7 +71,7 @@ export default function AbsenSiswa() {
           }
       };
       fetchData();
-  }, [firestore, user, toast]);
+  }, [firestore, user]);
 
   const jadwalQuery = useMemoFirebase(() => {
       if (!firestore || !user) return null;
@@ -131,6 +134,71 @@ export default function AbsenSiswa() {
     toast({ title: 'Absensi diperbarui' });
   };
 
+   const handleExportSiswaPdf = async () => {
+    if (!firestore || !students || students.length === 0) {
+        toast({ variant: 'destructive', title: "Tidak Ada Data", description: "Tidak ada siswa di kelas ini untuk dilaporkan." });
+        return;
+    }
+
+    toast({ title: "Mempersiapkan Laporan...", description: "Mohon tunggu sebentar." });
+
+    try {
+        const { default: jsPDF } = await import('jspdf');
+        await import('jspdf-autotable');
+
+        const monthDate = new Date(reportMonth + '-02');
+        const firstDay = format(startOfMonth(monthDate), 'yyyy-MM-dd');
+        const lastDay = format(endOfMonth(monthDate), 'yyyy-MM-dd');
+        
+        const studentIds = students.map(s => s.id);
+        const absensiReportQuery = query(
+            collection(firestore, 'absensiSiswa'),
+            where('tanggal', '>=', firstDay),
+            where('tanggal', '<=', lastDay),
+            where('siswaId', 'in', studentIds)
+        );
+
+        const absensiSnap = await getDocs(absensiReportQuery);
+        const monthlyAbsensi = absensiSnap.docs.map(d => d.data() as AbsensiSiswa);
+
+        const recap: { [key: string]: { nama: string, nis: string, Hadir: number, Izin: number, Sakit: number, Alpha: number } } = {};
+        
+        students.forEach(student => {
+            recap[student.id] = { nama: student.nama, nis: student.nis, Hadir: 0, Izin: 0, Sakit: 0, Alpha: 0 };
+        });
+
+        monthlyAbsensi.forEach(absen => {
+            if (recap[absen.siswaId]) {
+                recap[absen.siswaId][absen.status]++;
+            }
+        });
+        
+        const doc = new (jsPDF as any)();
+        const monthFormatted = format(monthDate, 'MMMM yyyy', { locale: id });
+        doc.text(`Laporan Absensi Siswa Kelas ${selectedKelas} - ${monthFormatted}`, 14, 15);
+        doc.setFontSize(10);
+
+        doc.autoTable({
+            head: [['NIS', 'Nama Siswa', 'Hadir', 'Izin', 'Sakit', 'Alpha']],
+            body: Object.values(recap).map(data => [
+                data.nis,
+                data.nama,
+                data.Hadir,
+                data.Izin,
+                data.Sakit,
+                data.Alpha,
+            ]),
+            startY: 20,
+        });
+
+        doc.save(`laporan_absensi_siswa_kelas_${selectedKelas}_${reportMonth}.pdf`);
+        toast({ title: "Laporan Berhasil Dibuat!", description: "File PDF telah diunduh." });
+    } catch (error) {
+        console.error("Failed to export PDF:", error);
+        toast({ variant: 'destructive', title: "Gagal Membuat Laporan", description: "Terjadi kesalahan." });
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -170,6 +238,19 @@ export default function AbsenSiswa() {
                         ))}
                     </SelectContent>
                 </Select>
+            </div>
+             <div className="lg:col-span-full flex items-center gap-2">
+                <label htmlFor="report-month-siswa" className="text-sm font-medium whitespace-nowrap">Laporan Bulanan:</label>
+                <input
+                    type="month"
+                    id="report-month-siswa"
+                    value={reportMonth}
+                    onChange={(e) => setReportMonth(e.target.value)}
+                    className="border rounded-md p-2 w-full"
+                />
+                <Button onClick={handleExportSiswaPdf} variant="outline" size="sm" disabled={!reportMonth || sortedStudents.length === 0}>
+                    <FileDown className="h-4 w-4 mr-2" /> Ekspor PDF
+                </Button>
             </div>
         </div>
       </CardHeader>
