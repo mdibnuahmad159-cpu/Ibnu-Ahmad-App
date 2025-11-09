@@ -38,7 +38,6 @@ export default function AbsenGuru() {
   const [kurikulum, setKurikulum] = useState<Kurikulum[]>([]);
   const [absensi, setAbsensi] = useState<AbsensiGuru[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isDataReady, setIsDataReady] = useState(false);
 
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
@@ -50,7 +49,6 @@ export default function AbsenGuru() {
   useEffect(() => {
     if (!firestore || !user) return;
     
-    setIsDataReady(false);
     const fetchStaticData = async () => {
       try {
         const guruQuery = collection(firestore, 'gurus');
@@ -61,15 +59,11 @@ export default function AbsenGuru() {
             getDocs(kurikulumQuery),
         ]);
 
-        const fetchedTeachers = guruSnap.docs.map(d => ({ id: d.id, ...d.data() } as Guru));
-        const fetchedKurikulum = kurikulumSnap.docs.map(d => ({ id: d.id, ...d.data() } as Kurikulum));
-        
-        setTeachers(fetchedTeachers);
-        setKurikulum(fetchedKurikulum);
-        setIsDataReady(true);
+        setTeachers(guruSnap.docs.map(d => ({ id: d.id, ...d.data() } as Guru)));
+        setKurikulum(kurikulumSnap.docs.map(d => ({ id: d.id, ...d.data() } as Kurikulum)));
 
       } catch (error) {
-        console.error("Failed to fetch static data", error);
+        console.error("Failed to fetch static data for AbsenGuru", error);
         toast({ variant: 'destructive', title: "Gagal memuat data pendukung."});
       }
     };
@@ -79,7 +73,7 @@ export default function AbsenGuru() {
 
   // Fetch dynamic data (schedule, attendance) and update on date change
   useEffect(() => {
-    if (!firestore || !user || !isDataReady) return; 
+    if (!firestore || !user) return; 
 
     setIsLoading(true);
 
@@ -105,7 +99,7 @@ export default function AbsenGuru() {
       unsubJadwal();
       unsubAbsensi();
     };
-  }, [firestore, user, toast, todayString, isDataReady]);
+  }, [firestore, user, toast, todayString, dayName]);
 
   const teachersMap = useMemo(() => new Map(teachers.map(t => [t.id, t.name])), [teachers]);
   const kurikulumMap = useMemo(() => new Map(kurikulum.map(k => [k.id, k])), [kurikulum]);
@@ -135,7 +129,11 @@ export default function AbsenGuru() {
   };
 
   const handleExportGuruPdf = async () => {
-    if (!firestore) return;
+    if (!firestore || teachers.length === 0 || kurikulum.length === 0) {
+      toast({ variant: 'destructive', title: "Data belum siap", description: "Tunggu data guru dan kurikulum termuat sepenuhnya."});
+      return;
+    };
+
     toast({ title: "Membuat Laporan...", description: "Harap tunggu sebentar." });
     
     const { default: jsPDF } = await import('jspdf');
@@ -254,7 +252,7 @@ export default function AbsenGuru() {
                         className="border rounded-md p-2"
                     />
                 </div>
-                <Button onClick={handleExportGuruPdf} variant="outline" size="sm" disabled={!isDataReady}>
+                <Button onClick={handleExportGuruPdf} variant="outline" size="sm" disabled={teachers.length === 0}>
                     <FileDown className="mr-2 h-4 w-4" /> Ekspor PDF
                 </Button>
             </div>
@@ -263,10 +261,9 @@ export default function AbsenGuru() {
       </CardHeader>
       <CardContent>
         {isLoading && <p>Memuat jadwal...</p>}
-        {!isLoading && !isDataReady && <p>Gagal memuat data pendukung. Coba refresh halaman.</p>}
-        {!isLoading && isDataReady && jadwalSorted.length === 0 && <p>Tidak ada jadwal mengajar untuk hari ini.</p>}
+        {!isLoading && jadwalSorted.length === 0 && <p>Tidak ada jadwal mengajar untuk hari ini.</p>}
         <div className="space-y-4">
-          {isDataReady && jadwalSorted.map((item) => {
+          {jadwalSorted.map((item) => {
             const currentStatus = absensiMap.get(item.id)?.status;
             return (
             <div key={item.id} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center border p-4 rounded-lg">

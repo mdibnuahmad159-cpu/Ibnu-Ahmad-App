@@ -48,7 +48,6 @@ export default function AbsenSiswa() {
   const [teachers, setTeachers] = useState<Guru[]>([]);
   const [absensiSiswa, setAbsensiSiswa] = useState<AbsensiSiswa[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isDataReady, setIsDataReady] = useState(false);
 
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedKelas, setSelectedKelas] = useState('1');
@@ -61,8 +60,6 @@ export default function AbsenSiswa() {
   // Fetch static data (kurikulum, teachers) once
   useEffect(() => {
       if (!firestore || !user) return;
-
-      setIsDataReady(false);
       const fetchData = async () => {
           try {
               const kurikulumQuery = collection(firestore, 'kurikulum');
@@ -70,19 +67,17 @@ export default function AbsenSiswa() {
               const [kurikulumSnap, guruSnap] = await Promise.all([getDocs(kurikulumQuery), getDocs(guruQuery)]);
               setKurikulum(kurikulumSnap.docs.map(d => ({ id: d.id, ...d.data() } as Kurikulum)));
               setTeachers(guruSnap.docs.map(d => ({ id: d.id, ...d.data() } as Guru)));
-              setIsDataReady(true);
           } catch (error) {
               console.error("Failed to fetch prerequisite data for AbsenSiswa", error);
               toast({ variant: 'destructive', title: "Gagal memuat data pendukung." });
           }
       };
-
       fetchData();
   }, [firestore, user, toast]);
 
   // Fetch dynamic data (jadwal, students) when date or class changes
   useEffect(() => {
-    if (!firestore || !user || !isDataReady) return;
+    if (!firestore || !user ) return;
 
     setIsLoading(true);
     setSelectedJadwalId(null);
@@ -119,7 +114,7 @@ export default function AbsenSiswa() {
       unsubJadwal();
       unsubSiswa();
     };
-  }, [firestore, user, todayString, selectedKelas, isDataReady, toast]);
+  }, [firestore, user, dayName, selectedKelas, toast]);
 
   // Fetch attendance data when jadwal changes
   useEffect(() => {
@@ -269,8 +264,8 @@ export default function AbsenSiswa() {
             <div className="lg:col-span-2">
                 <label className="text-sm font-medium">Jadwal Pelajaran</label>
                  <Select value={selectedJadwalId || ''} onValueChange={setSelectedJadwalId}>
-                    <SelectTrigger className="w-full mt-1" disabled={jadwal.length === 0 || !isDataReady}>
-                        <SelectValue placeholder={!isDataReady ? "Memuat..." : (jadwal.length > 0 ? "Pilih Jadwal" : "Tidak ada jadwal hari ini")} />
+                    <SelectTrigger className="w-full mt-1" disabled={jadwal.length === 0}>
+                        <SelectValue placeholder={jadwal.length > 0 ? "Pilih Jadwal" : "Tidak ada jadwal hari ini"} />
                     </SelectTrigger>
                     <SelectContent>
                         {jadwal.map(j => (
