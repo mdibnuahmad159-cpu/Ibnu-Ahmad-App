@@ -12,8 +12,8 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Jadwal, Guru, Kurikulum, AbsensiGuru } from '@/lib/data';
-import { useFirestore, useUser, setDocumentNonBlocking } from '@/firebase';
-import { collection, query, where, onSnapshot, doc, getDocs, setDoc } from 'firebase/firestore';
+import { useFirestore, useUser } from '@/firebase';
+import { collection, query, where, onSnapshot, doc, getDocs, setDoc, Unsubscribe } from 'firebase/firestore';
 import { useAdmin } from '@/context/AdminProvider';
 import { useToast } from '@/hooks/use-toast';
 import { format, getDay, startOfMonth, endOfMonth } from 'date-fns';
@@ -47,18 +47,39 @@ export default function AbsenGuru() {
   const todayString = useMemo(() => format(selectedDate, 'yyyy-MM-dd'), [selectedDate]);
   const dayName = useMemo(() => HARI_MAP[getDay(selectedDate)], [selectedDate]);
 
+  // Fetch static data once, and listen to dynamic data
+  useEffect(() => {
+    if (!firestore || !user) return;
+
+    const fetchStaticData = async () => {
+        try {
+            const guruQuery = collection(firestore, 'gurus');
+            const kurikulumQuery = collection(firestore, 'kurikulum');
+            
+            const [guruSnap, kurikulumSnap] = await Promise.all([
+                getDocs(guruQuery),
+                getDocs(kurikulumQuery),
+            ]);
+
+            setTeachers(guruSnap.docs.map(d => ({ id: d.id, ...d.data() } as Guru)));
+            setKurikulum(kurikulumSnap.docs.map(d => ({ id: d.id, ...d.data() } as Kurikulum)));
+        } catch (error) {
+            console.error("Failed to fetch static data", error);
+            toast({ variant: 'destructive', title: "Gagal memuat data pendukung."});
+        }
+    };
+
+    fetchStaticData();
+  }, [firestore, user, toast]);
+
   useEffect(() => {
     if (!firestore || !user) return;
     setIsLoading(true);
 
     const jadwalQuery = query(collection(firestore, 'jadwal'), where('hari', '==', dayName));
-    const guruQuery = collection(firestore, 'gurus');
-    const kurikulumQuery = collection(firestore, 'kurikulum');
     const absensiQuery = query(collection(firestore, 'absensiGuru'), where('tanggal', '==', todayString));
 
     const unsubJadwal = onSnapshot(jadwalQuery, snap => setJadwal(snap.docs.map(d => ({ id: d.id, ...d.data() } as Jadwal))));
-    const unsubGuru = onSnapshot(guruQuery, snap => setTeachers(snap.docs.map(d => ({ id: d.id, ...d.data() } as Guru))));
-    const unsubKurikulum = onSnapshot(kurikulumQuery, snap => setKurikulum(snap.docs.map(d => ({ id: d.id, ...d.data() } as Kurikulum))));
     const unsubAbsensi = onSnapshot(absensiQuery, snap => {
       setAbsensi(snap.docs.map(d => ({ id: d.id, ...d.data() } as AbsensiGuru)))
       setIsLoading(false);
@@ -66,8 +87,6 @@ export default function AbsenGuru() {
 
     return () => {
       unsubJadwal();
-      unsubGuru();
-      unsubKurikulum();
       unsubAbsensi();
     };
   }, [firestore, user, todayString, dayName]);
@@ -104,7 +123,7 @@ export default function AbsenGuru() {
     if (!firestore) return;
     toast({ title: "Membuat Laporan...", description: "Harap tunggu sebentar." });
 
-    const monthDate = new Date(selectedMonth);
+    const monthDate = new Date(selectedMonth + "-01T12:00:00");
     const firstDay = format(startOfMonth(monthDate), 'yyyy-MM-dd');
     const lastDay = format(endOfMonth(monthDate), 'yyyy-MM-dd');
 
@@ -168,7 +187,7 @@ export default function AbsenGuru() {
         head: [['Nama Guru', 'Hadir', 'Izin', 'Sakit', 'Alpha', 'Total Pertemuan']],
         body: summaryBody,
         startY: 20,
-        didDrawPage: (data) => { data.cursor!.y = 20; }
+        didDrawPage: (data) => { if(data.cursor) data.cursor.y = 20; }
     });
 
     Object.keys(attendanceByTeacher).forEach(guruId => {
@@ -190,6 +209,8 @@ export default function AbsenGuru() {
     
     doc.save(`laporan_absen_guru_${selectedMonth}.pdf`);
   };
+
+  const isDataReady = teachers.length > 0 && kurikulum.length > 0;
 
   return (
     <Card>
@@ -217,7 +238,7 @@ export default function AbsenGuru() {
                         className="border rounded-md p-2"
                     />
                 </div>
-                <Button onClick={handleExportGuruPdf} variant="outline" size="sm">
+                <Button onClick={handleExportGuruPdf} variant="outline" size="sm" disabled={!isDataReady}>
                     <FileDown className="mr-2 h-4 w-4" /> Ekspor PDF
                 </Button>
             </div>
@@ -226,9 +247,10 @@ export default function AbsenGuru() {
       </CardHeader>
       <CardContent>
         {isLoading && <p>Memuat jadwal...</p>}
-        {!isLoading && jadwalSorted.length === 0 && <p>Tidak ada jadwal mengajar untuk hari ini.</p>}
+        {!isLoading && !isDataReady && <p>Memuat data guru dan kurikulum...</p>}
+        {!isLoading && isDataReady && jadwalSorted.length === 0 && <p>Tidak ada jadwal mengajar untuk hari ini.</p>}
         <div className="space-y-4">
-          {jadwalSorted.map((item) => {
+          {isDataReady && jadwalSorted.map((item) => {
             const currentStatus = absensiMap.get(item.id)?.status;
             return (
             <div key={item.id} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center border p-4 rounded-lg">
@@ -264,3 +286,5 @@ export default function AbsenGuru() {
     </Card>
   );
 }
+
+    
