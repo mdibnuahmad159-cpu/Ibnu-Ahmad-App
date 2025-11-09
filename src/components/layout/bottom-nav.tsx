@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Users, BookMarked, UserCircle, GraduationCap, CalendarDays, FileText, ClipboardCheck, ChevronDown, ChevronUp, BookCopy } from 'lucide-react';
+import { Home, Users, BookMarked, UserCircle, GraduationCap, CalendarDays, FileText, ClipboardCheck, ChevronDown, ChevronUp, BookCopy, CheckSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
@@ -19,6 +19,7 @@ const navLinks = [
   { href: '/jadwal', label: 'Jadwal', icon: CalendarDays },
   { href: '/nilai', label: 'Nilai', icon: ClipboardCheck },
   { href: '/raport', label: 'Raport', icon: FileText },
+  { href: '/absensi', label: 'Absensi', icon: CheckSquare },
 ];
 
 export function BottomNav() {
@@ -70,7 +71,7 @@ export function BottomNav() {
                     })}
                 </nav>
                 <div className="flex justify-center border-t">
-                    <nav className="grid grid-cols-4 h-16 w-4/5">
+                    <nav className="grid grid-cols-5 h-16 w-full">
                         {bottomRowLinks.map((link) => {
                             const isActive = pathname === link.href;
                             return (

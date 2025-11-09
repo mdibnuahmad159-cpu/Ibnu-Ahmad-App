@@ -7,8 +7,8 @@
  * Data access is generally restricted to authenticated users, with distinctions made between different collections.
  *
  * Data Structure:
- * The Firestore database is structured with top-level collections for `gurus`, `siswa`, `kurikulum`, `jadwal`, `raports`, and `nilai`.
- * Each collection stores documents representing the respective entities (teachers, students, curricula, schedules, reports, and grades).
+ * The Firestore database is structured with top-level collections for `gurus`, `siswa`, `kurikulum`, `jadwal`, `raports`, `nilai`, `absensiGuru`, and `absensiSiswa`.
+ * Each collection stores documents representing the respective entities.
  *
  * Key Security Decisions:
  * - Unauthenticated users are not granted any data access.
@@ -36,8 +36,7 @@ service cloud.firestore {
      * @principle Authenticated access for profiles.
      */
     match /gurus/{guruId} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow read, write: if isSignedIn();
     }
 
     /**
@@ -50,8 +49,7 @@ service cloud.firestore {
      * @principle Authenticated access for profiles.
      */
     match /siswa/{siswaId} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow read, write: if isSignedIn();
     }
 
     /**
@@ -64,8 +62,7 @@ service cloud.firestore {
      * @principle Authenticated access for curriculum data.
      */
     match /kurikulum/{kurikulumId} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow read, write: if isSignedIn();
     }
 
     /**
@@ -78,8 +75,7 @@ service cloud.firestore {
      * @principle Authenticated access for schedule data.
      */
     match /jadwal/{jadwalId} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow read, write: if isSignedIn();
     }
     
     /**
@@ -88,8 +84,7 @@ service cloud.firestore {
      * @allow (read, write): Any authenticated user can manage exam schedules.
      */
     match /jadwalUjian/{ujianId} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow read, write: if isSignedIn();
     }
 
     /**
@@ -102,8 +97,7 @@ service cloud.firestore {
      * @principle Authenticated access for report data.
      */
     match /raports/{raportId} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow read, write: if isSignedIn();
     }
 
     /**
@@ -116,8 +110,25 @@ service cloud.firestore {
      * @principle Authenticated access for grade data.
      */
     match /nilai/{nilaiId} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow read, write: if isSignedIn();
+    }
+
+    /**
+     * @description Controls access to the `absensiGuru` collection.
+     * @path /databases/{database}/documents/absensiGuru/{absensiGuruId}
+     * @allow (read, write): Any authenticated user can manage teacher attendance.
+     */
+    match /absensiGuru/{absensiGuruId} {
+        allow read, write: if isSignedIn();
+    }
+    
+    /**
+     * @description Controls access to the `absensiSiswa` collection.
+     * @path /databases/{database}/documents/absensiSiswa/{absensiSiswaId}
+     * @allow (read, write): Any authenticated user can manage student attendance.
+     */
+    match /absensiSiswa/{absensiSiswaId} {
+        allow read, write: if isSignedIn();
     }
   }
 }

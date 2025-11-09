@@ -76,3 +76,21 @@ export type Nilai = {
     semester: 'ganjil' | 'genap';
     nilai: number;
 };
+
+export type AbsensiGuru = {
+  id: string;
+  jadwalId: string;
+  guruId: string;
+  tanggal: string; // YYYY-MM-DD
+  status: 'Hadir' | 'Izin' | 'Sakit' | 'Alpha';
+  keterangan?: string;
+}
+
+export type AbsensiSiswa = {
+  id: string;
+  jadwalId: string;
+  siswaId: string;
+  tanggal: string; // YYYY-MM-DD
+  status: 'Hadir' | 'Izin' | 'Sakit' | 'Alpha';
+  keterangan?: string;
+}

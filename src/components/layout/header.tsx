@@ -40,6 +40,7 @@ const navLinks = [
   { href: '/kelas', label: 'Kelas' },
   { href: '/raport', label: 'Raport' },
   { href: '/nilai', label: 'Nilai' },
+  { href: '/absensi', label: 'Absensi' },
 ];
 
 export function Header() {

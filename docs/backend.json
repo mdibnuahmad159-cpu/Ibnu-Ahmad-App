@@ -180,6 +180,32 @@
         }
       },
       "required": ["siswaId", "kurikulumId", "kelas", "semester", "nilai"]
+    },
+    "AbsensiGuru": {
+      "title": "AbsensiGuru",
+      "type": "object",
+      "description": "Stores attendance records for teachers.",
+      "properties": {
+        "jadwalId": { "type": "string" },
+        "guruId": { "type": "string" },
+        "tanggal": { "type": "string", "format": "date" },
+        "status": { "type": "string", "enum": ["Hadir", "Izin", "Sakit", "Alpha"] },
+        "keterangan": { "type": "string" }
+      },
+      "required": ["jadwalId", "guruId", "tanggal", "status"]
+    },
+    "AbsensiSiswa": {
+      "title": "AbsensiSiswa",
+      "type": "object",
+      "description": "Stores attendance records for students.",
+      "properties": {
+        "jadwalId": { "type": "string" },
+        "siswaId": { "type": "string" },
+        "tanggal": { "type": "string", "format": "date" },
+        "status": { "type": "string", "enum": ["Hadir", "Izin", "Sakit", "Alpha"] },
+        "keterangan": { "type": "string" }
+      },
+      "required": ["jadwalId", "siswaId", "tanggal", "status"]
     }
   },
   "auth": {
@@ -213,6 +239,14 @@
     "/nilai/{nilaiId}": {
       "schema": { "$ref": "#/entities/Nilai" },
       "description": "Stores individual student grades for subjects."
+    },
+    "/absensiGuru/{absensiGuruId}": {
+      "schema": { "$ref": "#/entities/AbsensiGuru" },
+      "description": "Stores teacher attendance records."
+    },
+    "/absensiSiswa/{absensiSiswaId}": {
+      "schema": { "$ref": "#/entities/AbsensiSiswa" },
+      "description": "Stores student attendance records."
     }
   }
 }
