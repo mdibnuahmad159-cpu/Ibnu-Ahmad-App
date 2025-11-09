@@ -73,7 +73,7 @@ export default function AbsenSiswa() {
           }
       };
       fetchData();
-  }, [firestore, user, toast]);
+  }, [firestore, user]);
 
   // Fetch dynamic data (jadwal, students) when date or class changes
   useEffect(() => {
@@ -114,7 +114,7 @@ export default function AbsenSiswa() {
       unsubJadwal();
       unsubSiswa();
     };
-  }, [firestore, user, dayName, selectedKelas, toast]);
+  }, [firestore, user, dayName, selectedKelas]);
 
   // Fetch attendance data when jadwal changes
   useEffect(() => {

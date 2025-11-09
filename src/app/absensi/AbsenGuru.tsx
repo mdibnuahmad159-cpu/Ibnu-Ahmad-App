@@ -69,7 +69,7 @@ export default function AbsenGuru() {
     };
 
     fetchStaticData();
-  }, [firestore, user, toast]);
+  }, [firestore, user]);
 
   // Fetch dynamic data (schedule, attendance) and update on date change
   useEffect(() => {
@@ -99,7 +99,7 @@ export default function AbsenGuru() {
       unsubJadwal();
       unsubAbsensi();
     };
-  }, [firestore, user, toast, todayString, dayName]);
+  }, [firestore, user, todayString, dayName]);
 
   const teachersMap = useMemo(() => new Map(teachers.map(t => [t.id, t.name])), [teachers]);
   const kurikulumMap = useMemo(() => new Map(kurikulum.map(k => [k.id, k])), [kurikulum]);
