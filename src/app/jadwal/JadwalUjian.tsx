@@ -128,7 +128,7 @@ export default function JadwalUjianComponent() {
     return () => {
       if (unsub) unsub();
     };
-  }, [selectedKelas, firestore, user, toast]);
+  }, [selectedKelas, firestore, user]);
 
   const jadwalByKelasHariJam = useMemo(() => {
     const grouped: { [key: string]: JadwalUjian } = {};
@@ -217,16 +217,24 @@ export default function JadwalUjianComponent() {
   const handleExportPdf = () => {
     if (!jadwalUjian) return;
     const doc = new jsPDF() as jsPDFWithAutoTable;
-    const title = selectedKelas === 'all' 
-      ? 'Jadwal Ujian - Semua Kelas'
-      : `Jadwal Ujian - Kelas ${selectedKelas}`;
+    
+    const kelasTitle = selectedKelas === 'all' ? 'Semua Kelas' : `Kelas ${selectedKelas}`;
+    const hariTitle = selectedHari === 'all' ? 'Semua Hari' : `Hari ${selectedHari}`;
+    const title = `Jadwal Ujian - ${kelasTitle} (${hariTitle})`;
     doc.text(title, 20, 10);
     
     const head: any[] = [['Kelas', 'Hari', 'Tanggal', 'Jam', 'Mata Pelajaran', 'Pengawas']];
     const body: any[] = [];
     
-    (jadwalUjian || [])
-      .sort((a,b) => Number(a.kelas) - Number(b.kelas) || HARI_OPERASIONAL.indexOf(a.hari) - HARI_OPERASIONAL.indexOf(b.hari))
+    const dataToExport = (jadwalUjian || [])
+      .filter(item => {
+        const kelasMatch = selectedKelas === 'all' || item.kelas === selectedKelas;
+        const hariMatch = selectedHari === 'all' || item.hari === selectedHari;
+        return kelasMatch && hariMatch;
+      });
+
+    dataToExport
+      .sort((a,b) => Number(a.kelas) - Number(b.kelas) || HARI_OPERASIONAL.indexOf(a.hari) - HARI_OPERASIONAL.indexOf(b.hari) || a.jam.localeCompare(b.jam))
       .forEach(item => {
         body.push([
           `Kelas ${item.kelas}`,

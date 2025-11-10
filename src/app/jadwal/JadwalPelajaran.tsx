@@ -128,7 +128,7 @@ export default function JadwalPelajaranComponent() {
         unsub();
       }
     };
-  }, [selectedKelas, firestore, user, toast]);
+  }, [selectedKelas, firestore, user]);
 
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -208,16 +208,24 @@ export default function JadwalPelajaranComponent() {
 
   const handleExportPdf = () => {
     const doc = new jsPDF() as jsPDFWithAutoTable;
-    const title = selectedKelas === 'all' 
-      ? 'Jadwal Pelajaran - Semua Kelas'
-      : `Jadwal Pelajaran - Kelas ${selectedKelas}`;
+    
+    const kelasTitle = selectedKelas === 'all' ? 'Semua Kelas' : `Kelas ${selectedKelas}`;
+    const hariTitle = selectedHari === 'all' ? 'Semua Hari' : `Hari ${selectedHari}`;
+    const title = `Jadwal Pelajaran - ${kelasTitle} (${hariTitle})`;
     doc.text(title, 20, 10);
     
     const head: any[] = [['Kelas', 'Hari', 'Jam', 'Pelajaran', 'Kitab', 'Guru']];
     const body: any[] = [];
     
-    (jadwal || [])
-      .sort((a,b) => Number(a.kelas) - Number(b.kelas) || HARI_OPERASIONAL.indexOf(a.hari) - HARI_OPERASIONAL.indexOf(b.hari))
+    const dataToExport = (jadwal || [])
+      .filter(item => {
+        const kelasMatch = selectedKelas === 'all' || item.kelas === selectedKelas;
+        const hariMatch = selectedHari === 'all' || item.hari === selectedHari;
+        return kelasMatch && hariMatch;
+      });
+
+    dataToExport
+      .sort((a,b) => Number(a.kelas) - Number(b.kelas) || HARI_OPERASIONAL.indexOf(a.hari) - HARI_OPERASIONAL.indexOf(b.hari) || a.jam.localeCompare(b.jam))
       .forEach(item => {
         const kurikulumItem = item.kurikulumId ? kurikulumMap.get(item.kurikulumId) : null;
         body.push([
